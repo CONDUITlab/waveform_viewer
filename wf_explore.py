@@ -37,7 +37,7 @@ Makes use of a sqlite DB file to define workflow for the specific analysis
 
 import numpy as np
 import pandas as pd
-import waveform
+import waveform_condensed as waveform
 import sqlite3
 import os.path
 import itertools
@@ -48,13 +48,12 @@ from bokeh.models import DatetimeTickFormatter
 from bokeh.plotting import figure 
 from bokeh.palettes import Category10
 from bokeh.io import output_notebook, show, output_file, curdoc
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, layout
 from bokeh.models import ColumnDataSource, HoverTool, RadioButtonGroup, Span
 from bokeh.layouts import widgetbox
 from bokeh.models.widgets import Slider, RangeSlider, CheckboxGroup,  Button, TextInput, Paragraph
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.models.widgets import DataTable, DateFormatter, TableColumn
-from bokeh.models.selections import Selection
 import sys
 
 hover = HoverTool(
@@ -76,7 +75,8 @@ def duration_HMS(start, stop):
     return hours, minutes, seconds
 
 def color_gen():
-    yield from itertools.cycle(Category10[10])
+    for arg in itertools.cycle(Category10[10]):
+        yield arg 
 colors = color_gen()   
 
 ################################## Initialization ##################################
@@ -373,14 +373,13 @@ save_seg_button.on_click(save_button_cb)
 wf_types = ['Unclassified', 'Normal', 'Abnormal']  # read this from the workflow file as well - table: waveform_types
 
 rbg = RadioButtonGroup ( labels = wf_types, active = 0)
-plus = Button(label = '+', width = 2)
-minus = Button(label = '-', width = 2)
+plus = Button(label = '+')
+minus = Button(label = '-')
 plus.on_click(slider_plus)
 minus.on_click(slider_minus)
 
-wf_layout = column()
-#wf_layout.children.append(column(cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button))
-wf_layout.children.append(column(cur_file_box, seg_slider, rbg, save_seg_button))
+wf_layout = layout(children = [cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button])
+#wf_layout.children.append(column(cur_file_box, rbg, save_seg_button))
 wf_layout.children.append(p)
 wf_tab = Panel(child = wf_layout, title = 'Waveforms')
 
