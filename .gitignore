@@ -1,3 +1,4 @@
 wf_files/
 Sandbox.ipynb
 workflow.db
+__pycache__/

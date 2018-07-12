@@ -6,6 +6,11 @@ Created on Tue Jun 26 21:40:00 2018
 Initial attempt a Bokeh based waveform visualization and annotation tool
 
 Makes use of a sqlite DB file to define workflow for the specific analysis
+
+    DB file can be created using wf_file_management.py function: 
+        wf_file_management.build_db('workflow.db', <hdf5-directory>) 
+        <hdf5-directory> is a directory containing at least 1 converted hdf5 file
+    
     sqlite tables:
         files:          contains names and paths to hdf5 files to be classified
         segments:       each segment in the region of interest will be saved as a row along with wavelet coefficients and other hemodynamic parameters 
@@ -62,6 +67,14 @@ hover = HoverTool(
     
 hover.formatters = {'index':'datetime'}
 
+################################## Miscellaneous functions ##################################
+
+def duration_HMS(start, stop):
+    duration = (stop-start).total_seconds()
+    hours, remainder = divmod(duration, 3600)
+    minutes, seconds = divmod (remainder, 60)
+    return hours, minutes, seconds
+
 def color_gen():
     yield from itertools.cycle(Category10[10])
 colors = color_gen()   
@@ -75,12 +88,6 @@ def read_files (db_file):
    db.close()
    return df
    
-def duration_HMS(start, stop):
-    duration = (stop-start).total_seconds()
-    hours, remainder = divmod(duration, 3600)
-    minutes, seconds = divmod (remainder, 60)
-    return hours, minutes, seconds
-    
 # open database file
 db_file = sys.argv[1] # db file is the master file for the workflow (contains files and classified segments)
 print ('Opening workflow file/database in {}'.format(db_file))
@@ -93,11 +100,10 @@ active_file = files.path[0]
 ################################## File Management ##################################
 
 ## File Management callbacks ##
+
 def file_select(attr, old, new):
     global active_file
-    vs_tab.disabled = True
-    #wf_tab.active = False
-    
+   
     try:
         selected_index = file_table.selected["1d"]["indices"][0]
         cur_file_name = file_table.data['filename'][selected_index]
@@ -112,9 +118,6 @@ def file_select(attr, old, new):
         
         #show in terminal window
         print('New file selected: {}'.format(cur_file))
-        createVitalsPanel()
-        vs_tab.disabled = False
-        #wf_tab.active = True
     except IndexError:
         pass
 
@@ -174,7 +177,6 @@ def createVitalsPanel():
 
 ## Vitals Functions ##
 
- 
 vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
 vs_source = ColumnDataSource (data=vs_sum.data)
 
@@ -217,9 +219,7 @@ end_span = Span(location=max(vs_sum.data.index).timestamp()*1000,
                   line_dash='dashed', line_width=3)
 p_ABP.add_layout(end_span)
     
-
 p_dict = {}
-
 for elem in list(vs_sum.data):
     if elem == 'AR2-M':
         continue
@@ -314,6 +314,7 @@ for elem in p_dict:
     
 vs_tab = Panel(child=vs_layout, title = 'Vitals')
 
+##################################  Waveform Panel ##################################
 
 ## Waveform callbacks ##
 
@@ -383,17 +384,15 @@ wf_layout.children.append(column(cur_file_box, seg_slider, rbg, save_seg_button)
 wf_layout.children.append(p)
 wf_tab = Panel(child = wf_layout, title = 'Waveforms')
 
-
-# include linked waveform showing ABP and ECG +/- CVP
-
+##################################  Bokeh Output ##################################
 
 # combine the panels and plot
 layout = Tabs(tabs=[ file_tab, vs_tab, wf_tab])
 
 curdoc().add_root(layout)
 
-output_file('test2.html')
-
+# If not being executed on bokeh server, these will provide output for user
+output_file('wf_view.html')
 show (layout)
-#show(widgetbox(seg_slider, rbg))
+
 
