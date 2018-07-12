@@ -205,8 +205,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         feats_cols=['Sys_t','SBP','Dia_t','DBP','PP','MAP','Beat_P','mean_dyneg','End_sys_t','AUS','End_sys_t2','AUS2']
         
         eng = matlab.engine.start_matlab()
-        eng.addpath(r'/Volumes/External/Documents/Research/MATLAB');
-        eng.addpath(r'/Volumes/External/Documents/Research/MATLAB/WFDB');   
+        eng.addpath(r'/.');
         eng.addpath(r'./WFDB'); 
         
         for i in range(1, len(self.segments)+1):
