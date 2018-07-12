@@ -37,7 +37,7 @@ Makes use of a sqlite DB file to define workflow for the specific analysis
 
 import numpy as np
 import pandas as pd
-import waveform_condensed as waveform
+import waveform
 import sqlite3
 import os.path
 import itertools

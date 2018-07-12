@@ -23,7 +23,6 @@ To implement:
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import pywt
 #import math
 import glob
@@ -34,6 +33,10 @@ from biosppy.signals import ecg
 import seaborn as sns
 import os.path
 
+from sys import platform
+
+if 'linux' not in platform:
+    import matplotlib.pyplot as plt
 
 #%matplotlib notebook 
 
