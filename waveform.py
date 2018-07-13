@@ -366,8 +366,8 @@ class Summary:
             self.read(filename) 
         
     def read (self, filename):
-        if os.path.split(filename)[1].split('.')[1] == 'sum':
-            df = pd.read_hdf(filename)
+        if os.path.isfile(filename.split('.')[0] + '.sum'):
+            df = pd.read_hdf(filename.split('.')[0] + '.sum')
         else:
             df = pd.read_hdf(filename, 'Vitals')
             df = df.resample('1T').mean()

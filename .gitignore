@@ -1,4 +1,9 @@
 wf_files/
+
 Sandbox.ipynb
+
 workflow.db
+
 __pycache__/
+
+.ipynb_checkpoints/

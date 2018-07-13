@@ -49,7 +49,7 @@ from bokeh.plotting import figure
 from bokeh.palettes import Category10
 from bokeh.io import output_notebook, show, output_file, curdoc
 from bokeh.layouts import column, row, layout
-from bokeh.models import ColumnDataSource, HoverTool, RadioButtonGroup, Span
+from bokeh.models import ColumnDataSource, HoverTool, RadioButtonGroup, Span, Range1d
 from bokeh.layouts import widgetbox
 from bokeh.models.widgets import Slider, RangeSlider, CheckboxGroup,  Button, TextInput, Paragraph
 from bokeh.models.widgets import Panel, Tabs
@@ -351,10 +351,11 @@ def callback (attr, old, new):
     # add functionality to update the segment classification selector based on previously assigned classification (eg rbg.active)
     
     N = seg_slider.value
-#    print(N)
-    try: wf_source.data = ColumnDataSource(wf.segments[N].to_frame()).data
+    try: 
+        wf_source.data = ColumnDataSource(wf.segments[N].to_frame()).data
+        p.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+        p.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
     except NameError: print('wf not defined yet. Sldier change is null')
-
 
 cur_file_box = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
 
@@ -392,7 +393,7 @@ layout = Tabs(tabs=[ file_tab, vs_tab, wf_tab])
 curdoc().add_root(layout)
 
 # If not being executed on bokeh server, these will provide output for user
-output_file('wf_view.html')
-show (layout)
+#output_file('wf_view.html')
+#show (layout)
 
 
