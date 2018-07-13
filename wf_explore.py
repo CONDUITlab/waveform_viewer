@@ -37,7 +37,7 @@ Makes use of a sqlite DB file to define workflow for the specific analysis
 
 import numpy as np
 import pandas as pd
-import waveform
+
 import sqlite3
 import os.path
 import itertools
@@ -55,6 +55,7 @@ from bokeh.models.widgets import Slider, RangeSlider, CheckboxGroup,  Button, Te
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.models.widgets import DataTable, DateFormatter, TableColumn
 import sys
+import waveform
 
 hover = HoverTool(
     tooltips=[

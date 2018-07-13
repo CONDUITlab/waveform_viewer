@@ -24,20 +24,20 @@ To implement:
 import pandas as pd
 import numpy as np
 import pywt
-#import math
 import glob
-from matplotlib.backends.backend_pdf import PdfPages
-import matlab.engine
 from sklearn.preprocessing import MinMaxScaler
 from biosppy.signals import ecg
-import seaborn as sns
 import os.path
 
 from sys import platform
 
 if 'linux' not in platform:
     import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    import seaborn as sns
 
+import matlab.engine
+    
 #%matplotlib notebook 
 
 class ABP_class:
