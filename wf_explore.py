@@ -270,8 +270,9 @@ def load_cb ():
     
     seg_slider.value = 1
     seg_slider.end=len(wf.segments)
-    wf_source.data = ColumnDataSource(wf.segments[1].to_frame()).data
-    p.line('index','ABP',source=wf_source, name = 'segment_line')
+    wf_source.data = ColumnDataSource(wf.segments[1]).data
+    p.line('index','ABP',source=wf_source,color = next(colors))
+    p_wf_II.line('index','II',source=wf_source,color = next(colors))
     
     load_button.disabled = False
     save_seg_button.disabled = False
@@ -352,9 +353,11 @@ def callback (attr, old, new):
     
     N = seg_slider.value
     try: 
-        wf_source.data = ColumnDataSource(wf.segments[N].to_frame()).data
+        wf_source.data = ColumnDataSource(wf.segments[N]).data
         p.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
         p.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+        p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+        p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
     except NameError: print('wf not defined yet. Sldier change is null')
 
 cur_file_box = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
@@ -363,8 +366,10 @@ cur_file_box = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1])
 wf_source=ColumnDataSource()
 
 p = figure(x_axis_label='Datetime',y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
-          tools=['box_zoom', 'xwheel_zoom', 'pan', hover, 'reset','crosshair'], plot_width=1000)
-
+          tools=['box_zoom', 'xwheel_zoom', 'pan', hover, 'reset','crosshair'], plot_width=1000, plot_height = 400)
+p_wf_II = figure(x_axis_label='Datetime',y_axis_label='II (mV)', x_axis_type='datetime', 
+          tools=['box_zoom', 'xwheel_zoom', 'pan', hover, 'reset','crosshair'], plot_width=1000, plot_height = 400)
+p_wf_II.x_range = p.x_range
 
 seg_slider = Slider(start=1, end=2, value=1, step=1, title="Segment", disabled = True)
 save_seg_button = Button(label='Save Segment', button_type='success', disabled = True)
@@ -383,6 +388,7 @@ minus.on_click(slider_minus)
 wf_layout = layout(children = [cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button])
 #wf_layout.children.append(column(cur_file_box, rbg, save_seg_button))
 wf_layout.children.append(p)
+wf_layout.children.append(p_wf_II)
 wf_tab = Panel(child = wf_layout, title = 'Waveforms')
 
 ##################################  Bokeh Output ##################################

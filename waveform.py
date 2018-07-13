@@ -185,7 +185,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
             
             
     def segmenter (self, window_multiplier=1):
-        # need to adapt this to accound for possibly different sampling rates
+        # need to adapt this to account for possibly different sampling rates
         waveform = self.waves
         level = self.seg_level
         
@@ -199,7 +199,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         self.segments = {}
         self.seg_start_time = {}
         for i in range(1, len(seg_idx)):
-            signal = waveform.iloc[seg_idx[i-1]:seg_idx[i]]['ABP']
+            signal = waveform.iloc[seg_idx[i-1]:seg_idx[i]][['ABP','II']]
             self.segments[i]=signal
             self.seg_start_time[i] = waveform.index[seg_idx[i]].round('s')
  
@@ -212,7 +212,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         eng.addpath(r'./WFDB'); 
         
         for i in range(1, len(self.segments)+1):
-            seg = self.segments[i]
+            seg = self.segments[i]['ABP']
             seglist = seg.values.tolist()
 #            print ('Processing segment {}'.format(i))
             try:
@@ -315,7 +315,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
                 print ('{} is NOT available'.format(chan))
         print ('\nWe have {} channels to plot'.format(len(chan_plots)))
         
-        ABP = self.segments[seg]
+        ABP = self.segments[seg]['ABP']
         feats_df = self.features[seg]
         sys_idx = (feats_df['Sys_t'].values * 240/125).round().astype(int).transpose().tolist()
         sys_idx = (feats_df['Sys_t'].values * 240/125).round().astype(int).transpose().tolist()
@@ -333,7 +333,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
                 ax.plot(ABP.index, ABP.values,'b-')
                 ax.plot(ABP[sys_idx].index, feats_df['SBP'],'rv', label='SBP')
                 ax.plot(ABP[dia_idx].index, feats_df['DBP'],'g^', label='DBP')
-                self.segments[seg].plot(ax=ax)
+                self.segments[seg]['ABP'].plot(ax=ax)
                 ax.xaxis.set_visible(False)
                 ax.set_ylabel('mmHg')
                 ax.legend(loc='upper right')
@@ -439,7 +439,7 @@ class ABPWavelet (Waveform):
         for i in range(1, len(self.segments)+1):
             #signal1 = waveform.head(3200)['AR1'] should just use the segments here *****
             #signal = waveform.iloc[segments[i-1]:segments[i]]['ABP']
-            signal = self.segments[i]
+            signal = self.segments[i]['ABP']
             signal = pd.DataFrame(scaler.fit_transform(signal.to_frame()) )[0]
     
             for coeff, label in zip(self.generateSWTCoeffs(signal, level), self.listCreator(level)):
