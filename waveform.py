@@ -26,7 +26,7 @@ import numpy as np
 import pywt
 import glob
 from sklearn.preprocessing import MinMaxScaler
-from biosppy.signals import ecg
+
 import os.path
 
 from sys import platform
@@ -35,6 +35,11 @@ if 'linux' not in platform:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     import seaborn as sns
+else:
+    import matplotlib
+    matplotlib.use('Agg')
+
+import biosppy.signals.ecg as ecg
 
 import matlab.engine
     
