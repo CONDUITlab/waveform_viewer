@@ -164,7 +164,6 @@ data_table = DataTable(source = file_table, columns=columns, width=400, height=2
 
 ## Add callbacks to widgets ##
 file_table.selected.indices = [selected_index]
-#file_table.on_change('selected', file_select)
 sel_file_button.on_click(update)
 
 
@@ -174,35 +173,6 @@ file_layout = column(table_widget, file_controls)
 file_tab = Panel(child=file_layout, title='File Management')
 
 ##################################  Vitals Panel ##################################
-
-def createVitalsPanel():
-    colors = color_gen()
-    for elem, color in zip(list(vs_sum.data), colors):
-        if elem == 'ABP':
-            continue
-        p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
-        p_temp.xaxis.formatter=DatetimeTickFormatter(
-            hours=dt_axis_format,
-            days=dt_axis_format,
-            months=dt_axis_format,
-            years=dt_axis_format,
-        )
-        p_temp.x_range = p_ABP.x_range
-        p_temp.line('DateTime', elem, source=vs_source, line_color=color)
-        p_dict[elem] = p_temp
-    selected_dates.text=str(min(vs_sum.data.index)) + ' to ' + str(max(vs_sum.data.index))
-    checkbox_group.labels = list(p_dict)
-    checkbox_group.active = list(range(0,len(p_dict)))
-    s = min(vs_sum.data.index).timestamp()*1000
-    e = max(vs_sum.data.index).timestamp()*1000
-    date_range_slider.start = s
-    date_range_slider.end = e
-    date_range_slider.value = (s, e)
-    vs_layout.children = None
-    vs_layout.children.append(widgetbox(selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
-    vs_layout.children.append(p_ABP)
-    for elem in p_dict:
-        vs_layout.children.append(p_dict[elem])
 
 ## Vitals Functions ##
 
