@@ -95,53 +95,81 @@ print ('Opening workflow file/database in {}'.format(db_file))
 files = read_files(db_file) # consider reading only files with specific status or filter the table (eg hide files that are already completed)
 
 # open waveform file - this should be done in the file_management tab
-cur_file_name = files.filename[0] # the current file should be the file selected from the files table in db_file
-active_file = files.path[0]
+file = 0
+
+for selected_index in range(0, len(files)):
+    cur_file_name = files.filename[selected_index] # the current file should be the file selected from the files table in db_file
+    active_file = files.path[selected_index]
+    vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
+    if 'ABP' in list(vs_sum.data):
+        break
+if 'ABP' not in list(vs_sum.data):  
+    raise('No ABP signal')
 
 ################################## File Management ##################################
 
 ## File Management callbacks ##
-
-def file_select(attr, old, new):
-    global active_file
-   
-    try:
-        selected_index = file_table.selected["1d"]["indices"][0]
-        cur_file_name = file_table.data['filename'][selected_index]
-        active_file = file_table.data['path'][selected_index]
-        sel_file_txt.text = 'Current File: '+ str(active_file.split('\\')[-1])
-        cur_file_box.text = 'Current File: '+ str(active_file.split('\\')[-1])
-        selected_file.text = 'Current File: '+ str(active_file.split('\\')[-1])
-        # update vitals_plot
-        vs_sum = waveform.Summary(active_file)
-        vs_source.data = ColumnDataSource(data=vs_sum.data).data
-        p_ABP.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
-        
-        #show in terminal window
-        print('New file selected: {}'.format(cur_file))
-    except IndexError:
-        pass
+def update():
+    global active_file 
+    global selected_index 
+    # Get the row number of the selected file
+    selected_index_temp = file_table.selected["1d"]["indices"][0]
+    # Check that the selected file has the waveform of interest
+    if 'ABP' not in list(waveform.Summary(file_table.data['path'][selected_index_temp]).data):
+        # If it isn't there, ignore the change
+        if warn_txt not in file_layout.children:
+            file_layout.children.append(warn_txt)
+        file_table.selected.indices = [selected_index]
+        return
+    # Remove the 'missing' warning
+    if warn_txt in file_layout.children:
+        file_layout.children.remove(warn_txt)
+    # If the same file was selected, ignore the change
+    if selected_index == selected_index_temp:
+        return
+    # Disable the waveform tab (so the .db file isn't overwritten with a different file)
+    disable_wf_panel()
+    # Change selection
+    selected_index = selected_index_temp
+    cur_file_name = file_table.data['filename'][selected_index]
+    active_file = file_table.data['path'][selected_index]
+    sel_file_txt.text = 'Current File: '+ str(active_file.split('\\')[-1])
+    cur_file_box.text = 'Current File: '+ str(active_file.split('\\')[-1])
+    selected_file.text = 'Current File: '+ str(active_file.split('\\')[-1])
+    # Update the source of the plots
+    vs_sum = waveform.Summary(active_file)
+    vs_source.data = ColumnDataSource(data=vs_sum.data).data
+    date_range_slider.start = min(vs_sum.data.index).timestamp()*1000
+    date_range_slider.end = max(vs_sum.data.index).timestamp()*1000
+    date_range_slider.value = (min(vs_sum.data.index).timestamp()*1000, max(vs_sum.data.index).timestamp()*1000)
+    
+    p_ABP.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
+    print('New file selected: {}'.format(cur_file_name))
 
 ## File management widgets ##
 sel_file_txt = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
+warn_txt = Paragraph(text='No ' + 'ABP' + ' found in selection')
+sel_file_button = Button(label='Change File',button_type='success')
 
 files['start_time'] = pd.to_datetime(files['start_time'])
 file_table = ColumnDataSource(files)
 
-columns = files.columns
 columns = [
     TableColumn(field='filename', title='File'),
     TableColumn(field='start_time', title='Start Time', formatter=DateFormatter()),
-    TableColumn(field='status', title='status'),
+    TableColumn(field='status', title='Status'),
 ]
 
 data_table = DataTable(source = file_table, columns=columns, width=400, height=280)
 
 ## Add callbacks to widgets ##
-file_table.on_change('selected', file_select)
+file_table.selected.indices = [selected_index]
+#file_table.on_change('selected', file_select)
+sel_file_button.on_click(update)
+
 
 table_widget = widgetbox(data_table)
-file_controls = widgetbox(sel_file_txt)
+file_controls = row(sel_file_txt,sel_file_button)
 file_layout = column(table_widget, file_controls)
 file_tab = Panel(child=file_layout, title='File Management')
 
@@ -150,7 +178,7 @@ file_tab = Panel(child=file_layout, title='File Management')
 def createVitalsPanel():
     colors = color_gen()
     for elem, color in zip(list(vs_sum.data), colors):
-        if elem == 'AR2-M':
+        if elem == 'ABP':
             continue
         p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
         p_temp.xaxis.formatter=DatetimeTickFormatter(
@@ -179,8 +207,9 @@ def createVitalsPanel():
 ## Vitals Functions ##
 
 vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
-vs_source = ColumnDataSource (data=vs_sum.data)
 
+vs_source = ColumnDataSource (data=vs_sum.data)
+print(vs_source.column_names)
 vs_hover = HoverTool(
     tooltips=[
         ('Time','@DateTime{%Y-%m-%d-%H:%M}'),
@@ -206,7 +235,7 @@ p_ABP.xaxis.formatter=DatetimeTickFormatter(
         months=dt_axis_format,
         years=dt_axis_format,
     )
-p_ABP.line('DateTime', 'AR2-M', source=vs_source, line_color = next(colors), legend='AR2')
+p_ABP.line('DateTime', 'ABP', source=vs_source, line_color = next(colors), legend='AR2')
 
 # Start span represents the beginning of the area of interest
 start_span = Span(location=min(vs_sum.data.index).timestamp()*1000,
@@ -222,7 +251,7 @@ p_ABP.add_layout(end_span)
     
 p_dict = {}
 for elem in list(vs_sum.data):
-    if elem == 'AR2-M':
+    if elem == 'ABP':
         continue
     p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
     p_temp.xaxis.formatter=DatetimeTickFormatter(
@@ -254,8 +283,7 @@ def load_cb ():
     load_button.disabled = True
     load_button.label = 'Segmenting File'
     load_button.button_type = 'warning'
-    seg_slider.disabled = True
-    save_seg_button.disabled = True
+    disable_wf_panel()
     dates = date_range_slider.value
     vs_start = pd.Timestamp(dates[0]/1000,unit='s')
     vs_end = pd.Timestamp(dates[1]/1000,unit='s')
@@ -275,8 +303,7 @@ def load_cb ():
     p_wf_II.line('index','II',source=wf_source,color = next(colors))
     
     load_button.disabled = False
-    save_seg_button.disabled = False
-    seg_slider.disabled = False
+    disable_wf_panel(False)
     load_button.label = 'Segment File'
     load_button.button_type = 'success'
     
@@ -346,6 +373,11 @@ def slider_minus():
     if seg_slider.value != seg_slider.start:
         seg_slider.value -= 1
     
+def disable_wf_panel(disable = True):
+    seg_slider.disabled = disable
+    save_seg_button.disabled = disable
+    plus.disabled = disable
+    minus.disabled = disable
     
 def callback (attr, old, new):
     # segment selection callback

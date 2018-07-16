@@ -377,11 +377,32 @@ class Summary:
             df = pd.read_hdf(filename, 'Vitals')
             df = df.resample('1T').mean()
         self.data = df.dropna(axis=1,how='all').drop(['NBP-S', 'NBP-D'],axis = 'columns',errors='ignore')
-
+        self.rename_wfs()
         
     def plot (self):
         self.data.plot(subplots=True,figsize=(10,10))
         plt.show()
+        
+    def rename_wfs (self):
+        # after blank columns are dropped at import, if only one ABP channel is left, rename it to ABP
+        # do same for CVP
+        if ('AR2-M' not in self.data.columns) & ('AR3-M' not in self.data.columns):
+            if 'AR1-M' in self.data.columns:
+                print ('AR1-M is ABP channel, renaming')
+                self.data.rename(columns={'AR1-M':'ABP'},inplace=True)
+        elif ('AR1-M' not in self.data.columns) & ('AR2-M' in self.data.columns):
+            print ('AR2-M is ABP channel, renaming')
+            self.data.rename(columns={'AR2-M':'ABP'},inplace=True)
+        elif ('AR1-M' not in self.data.columns) & ('AR3-M' in self.data.columns):
+            print ('AR3-M is ABP channel, renaming')
+            self.data.rename(columns={'AR3-M':'ABP'},inplace=True)
+                
+        if ('CVP2' not in self.data.columns) & ('CVP1' in self.data.columns):
+            print ('CVP1 is CVP channel, renaming')
+            self.data.rename(columns={'CVP1':'CVP'},inplace=True)
+        elif('CVP2' in self.data.columns) & ('CVP1' not in self.data.columns):
+            print ('CVP2 is CVP channel, renaming')
+            self.data.rename(columns={'CVP2':'CVP'},inplace=True)
         
 class ABPWavelet (Waveform):
 # ABPWavelet Class
