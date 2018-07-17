@@ -88,6 +88,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         self.Fs = 240 # default sample rate- should also set time constant
         self.seg_level = level
         self.seg_start_time = {}
+        self.section_size = 0
         
         if process:
         # automate pre-processing, segmentation, etc
@@ -196,11 +197,11 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         
 #        DATA_TIME_CONST = 0.004166747   #will need to adjust for MIMIC data
 #        section_size = math.ceil(13.5 / DATA_TIME_CONST)
-        section_size = int((100*2**level / 4)) * window_multiplier
-        print('Segmenting waveform. Level = {}, section size = {}'.format(level, section_size))
+        self.section_size = int((100*2**level / 4)) * window_multiplier
+        print('Segmenting waveform. Level = {}, section size = {}'.format(level, self.section_size))
 
         
-        seg_idx = np.arange(0, len(waveform), section_size)
+        seg_idx = np.arange(0, len(waveform), self.section_size)
         self.segments = {}
         self.seg_start_time = {}
         for i in range(1, len(seg_idx)):
@@ -372,11 +373,13 @@ class Summary:
         
     def read (self, filename):
         if os.path.isfile(filename.split('.')[0] + '.sum'):
+            print('Reading .sum summary file')
             df = pd.read_hdf(filename.split('.')[0] + '.sum')
         else:
+            print('No .sum summary file. Sampling vitals.')
             df = pd.read_hdf(filename, 'Vitals')
             df = df.resample('1T').mean()
-        self.data = df.dropna(axis=1,how='all').drop(['NBP-S', 'NBP-D'],axis = 'columns',errors='ignore')
+        self.data = df.dropna(axis='columns',how='all').drop(['NBP-S', 'NBP-D'],axis = 'columns',errors='ignore')
         self.rename_wfs()
         
     def plot (self):

@@ -67,6 +67,16 @@ hover = HoverTool(
     
 hover.formatters = {'index':'datetime'}
 
+dt_axis_format = ["%d-%m-%Y %H:%M"]
+vs_x_axis = DatetimeTickFormatter(
+            hours=dt_axis_format,
+            days=dt_axis_format,
+            months=dt_axis_format,
+            years=dt_axis_format,
+        )
+
+vitals_list = ['SPO2-%', 'CVP', 'NBP-M', 'PVC', 'HR']
+        
 ################################## Miscellaneous functions ##################################
 
 def duration_HMS(start, stop):
@@ -95,8 +105,6 @@ print ('Opening workflow file/database in {}'.format(db_file))
 files = read_files(db_file) # consider reading only files with specific status or filter the table (eg hide files that are already completed)
 
 # open waveform file - this should be done in the file_management tab
-file = 0
-
 for selected_index in range(0, len(files)):
     cur_file_name = files.filename[selected_index] # the current file should be the file selected from the files table in db_file
     active_file = files.path[selected_index]
@@ -112,6 +120,7 @@ if 'ABP' not in list(vs_sum.data):
 def update():
     global active_file 
     global selected_index 
+    global vs_source
     # Get the row number of the selected file
     selected_index_temp = file_table.selected["1d"]["indices"][0]
     # Check that the selected file has the waveform of interest
@@ -139,13 +148,32 @@ def update():
     # Update the source of the plots
     vs_sum = waveform.Summary(active_file)
     vs_source.data = ColumnDataSource(data=vs_sum.data).data
-    date_range_slider.start = min(vs_sum.data.index).timestamp()*1000
-    date_range_slider.end = max(vs_sum.data.index).timestamp()*1000
-    date_range_slider.value = (min(vs_sum.data.index).timestamp()*1000, max(vs_sum.data.index).timestamp()*1000)
-    
+    vs_source.stream(vs_sum.data)
+    date_range_slider.start = pd.to_datetime(min(vs_source.data['DateTime'])).timestamp()*1000
+    date_range_slider.end = pd.to_datetime(max(vs_source.data['DateTime'])).timestamp()*1000
+    date_range_slider.value = (date_range_slider.start, date_range_slider.end)
     p_ABP.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
+    # Reset vitals selections
+    while vs_plots.children:
+        vs_plots.children.pop()
+    while checkbox_group.labels:
+        checkbox_group.labels.pop()
+    p_dict.clear()
+    for elem in list(vs_source.data):
+        if elem == 'ABP' or elem == 'DateTime':
+            continue
+        p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height,x_range = p_ABP.x_range)
+        p_temp.xaxis.formatter = vs_x_axis
+        p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
+        p_dict[elem] = p_temp
+    checkbox_group.labels = list(p_dict)
+    checkbox_group.active = list(range(len(p_dict)))
+    for elem in p_dict:
+        vs_plots.children.append(p_dict[elem])
+    p_ABP.x_range.start = date_range_slider.start
+    p_ABP.x_range.end = date_range_slider.end
     print('New file selected: {}'.format(cur_file_name))
-
+    
 ## File management widgets ##
 sel_file_txt = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
 warn_txt = Paragraph(text='No ' + 'ABP' + ' found in selection')
@@ -166,7 +194,6 @@ data_table = DataTable(source = file_table, columns=columns, width=400, height=2
 file_table.selected.indices = [selected_index]
 sel_file_button.on_click(update)
 
-
 table_widget = widgetbox(data_table)
 file_controls = row(sel_file_txt,sel_file_button)
 file_layout = column(table_widget, file_controls)
@@ -177,9 +204,8 @@ file_tab = Panel(child=file_layout, title='File Management')
 ## Vitals Functions ##
 
 vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
-
 vs_source = ColumnDataSource (data=vs_sum.data)
-print(vs_source.column_names)
+
 vs_hover = HoverTool(
     tooltips=[
         ('Time','@DateTime{%Y-%m-%d-%H:%M}'),
@@ -197,15 +223,10 @@ p_ABP = figure(y_axis_label='ABP (mmHg)', x_axis_type='datetime',
            tools=['box_zoom', 'xwheel_zoom', 'pan', vs_hover, 'reset','crosshair'], y_range=(0, 200), 
                plot_width=vs_width, plot_height=vs_height, title = 'Vitals Summary for file: {}'.format(cur_file_name ))
 p_ABP.title.align = 'center'
-dt_axis_format = ["%d-%m-%Y %H:%M"]
 
-p_ABP.xaxis.formatter=DatetimeTickFormatter(
-        hours=dt_axis_format,
-        days=dt_axis_format,
-        months=dt_axis_format,
-        years=dt_axis_format,
-    )
-p_ABP.line('DateTime', 'ABP', source=vs_source, line_color = next(colors), legend='AR2')
+
+p_ABP.xaxis.formatter = vs_x_axis
+p_ABP.line('DateTime', 'ABP', source=vs_source, line_color = next(colors), name= 'main_line')
 
 # Start span represents the beginning of the area of interest
 start_span = Span(location=min(vs_sum.data.index).timestamp()*1000,
@@ -218,22 +239,19 @@ end_span = Span(location=max(vs_sum.data.index).timestamp()*1000,
                   dimension='height', line_color='red',
                   line_dash='dashed', line_width=3)
 p_ABP.add_layout(end_span)
-    
+
 p_dict = {}
+
 for elem in list(vs_sum.data):
     if elem == 'ABP':
         continue
     p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
-    p_temp.xaxis.formatter=DatetimeTickFormatter(
-        hours=dt_axis_format,
-        days=dt_axis_format,
-        months=dt_axis_format,
-        years=dt_axis_format,
-    )
+    p_temp.xaxis.formatter = vs_x_axis
     p_temp.x_range = p_ABP.x_range
     p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
     p_dict[elem] = p_temp
 
+  
 load_button = Button(label="Segment File", button_type="success")
 selected_file = Paragraph(text = 'Current File: {0:s}'.format(os.path.split(active_file)[-1]))
 
@@ -246,7 +264,8 @@ checkbox_group = CheckboxGroup(labels = list(p_dict), active = list(range(0,len(
 s = min(vs_sum.data.index).timestamp()*1000
 e = max(vs_sum.data.index).timestamp()*1000
 date_range_slider = RangeSlider(title="Date Range", start=s, end=e, value= (s, e), step=1, show_value = False, tooltips = False)
-
+    
+    
 def load_cb ():
     global wf
     global wvt
@@ -279,14 +298,14 @@ def load_cb ():
     
     
 def checkbox_click_handler(selected_checkboxes):
-    visible_glyphs = vs_layout.children
+    visible_glyphs = vs_plots.children
     for index, glyph in enumerate(p_dict):
         if index in selected_checkboxes:
             if p_dict[glyph] not in visible_glyphs:
-                vs_layout.children.append(p_dict[glyph])
+                vs_plots.children.append(p_dict[glyph])
         else:
             if p_dict[glyph] in visible_glyphs:
-                vs_layout.children.remove(p_dict[glyph])
+                vs_plots.children.remove(p_dict[glyph])
                 
 def date_time_slider(attr, old, new):
     dates = date_range_slider.value
@@ -308,11 +327,15 @@ date_range_slider.on_change('value',date_time_slider)
 vs_layout = column()
 vs_layout.children.append(widgetbox(selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
 vs_layout.children.append(p_ABP)
-for elem in p_dict:
-    vs_layout.children.append(p_dict[elem])
-    
-vs_tab = Panel(child=vs_layout, title = 'Vitals')
+vs_plots = column()
 
+for elem in p_dict:
+    vs_plots.children.append(p_dict[elem])
+
+vs_layout.children.append(vs_plots)  
+ 
+vs_tab = Panel(child=vs_layout, title = 'Vitals')
+  
 ##################################  Waveform Panel ##################################
 
 ## Waveform callbacks ##
@@ -328,6 +351,7 @@ def save_button_cb ():
     db_row['entry'] = entry
     db_row['seg_class'] = choice # assign the classification to the entry row
     db_row['seg_start_time'] = wvt.seg_start_time[N]
+    db_row['seg_length']  = wvt.section_size
     # write to the database
     db = sqlite3.connect(db_file)
     db_row.to_sql("segments", db, if_exists='append', index=False)
@@ -388,7 +412,6 @@ plus.on_click(slider_plus)
 minus.on_click(slider_minus)
 
 wf_layout = layout(children = [cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button])
-#wf_layout.children.append(column(cur_file_box, rbg, save_seg_button))
 wf_layout.children.append(p)
 wf_layout.children.append(p_wf_II)
 wf_tab = Panel(child = wf_layout, title = 'Waveforms')
