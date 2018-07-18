@@ -7,3 +7,5 @@ workflow.db
 __pycache__/
 
 .ipynb_checkpoints/
+cases.db
+.DS_Store
