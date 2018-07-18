@@ -452,7 +452,7 @@ class ABPWavelet (Waveform):
     def calcEnergy(coeff):
         return np.sqrt(np.sum(np.array(coeff ** 2)) / len(coeff))
    
-    def processWaveform(self, window_multiplier=1):
+    def processWaveform(self, window_multiplier=1, normalize=True):
         energy = {}
         level = self.seg_level
 #        waveform = self.waves
@@ -469,7 +469,8 @@ class ABPWavelet (Waveform):
             #signal1 = waveform.head(3200)['AR1'] should just use the segments here *****
             #signal = waveform.iloc[segments[i-1]:segments[i]]['ABP']
             signal = self.segments[i]['ABP']
-            signal = pd.DataFrame(scaler.fit_transform(signal.to_frame()) )[0]
+            if normalize:
+                signal = pd.DataFrame(scaler.fit_transform(signal.to_frame()) )[0]
     
             for coeff, label in zip(self.generateSWTCoeffs(signal, level), self.listCreator(level)):
                 for single_coeff, single_label in zip(coeff, label):
