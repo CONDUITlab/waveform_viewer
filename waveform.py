@@ -128,10 +128,6 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         
         self.waves = self.waves.dropna(axis=1,how='all')
         self.vitals = self.vitals.dropna(axis=1,how='all')
-#        del self.vitals['NBP-S']
-#        del self.vitals['NBP-D']
-        # drop ridiculous values
-        # call self.clean_ABP
         self.clean_wfs()
     
     def wf_clean (self, channel, high, low):
