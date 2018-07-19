@@ -499,7 +499,7 @@ class ABPWavelet (Waveform):
         
     def generateFeatures (self):
         # generate the wavelet feature dataframe (including MAP and HR)
-        self.processWaveform()
+ #       self.processWaveform()
         MAP = pd.Series(self.MAP,name='MAP')
         HR = pd.Series(self.HR,name='HR')
         
