@@ -92,7 +92,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         
         if process:
         # automate pre-processing, segmentation, etc
-            self.rename_wfs()
+            #self.rename_wfs()
             self.segmenter()
             self.check_times()
             self.wf_features()
@@ -195,8 +195,6 @@ class Waveform(ABP_class, CVP_class, ECG_class):
 #        section_size = math.ceil(13.5 / DATA_TIME_CONST)
         self.section_size = int((100*2**level / 4)) * window_multiplier
         print('Segmenting waveform. Level = {}, section size = {}'.format(level, self.section_size))
-
-        
         seg_idx = np.arange(0, len(waveform), self.section_size)
         self.segments = {}
         self.seg_start_time = {}
@@ -376,7 +374,7 @@ class Summary:
             df = pd.read_hdf(filename, 'Vitals')
             df = df.resample('1T').mean()
         self.data = df.dropna(axis='columns',how='all').drop(['NBP-S', 'NBP-D'],axis = 'columns',errors='ignore')
-        self.rename_wfs()
+        #self.rename_wfs()
         
     def plot (self):
         self.data.plot(subplots=True,figsize=(10,10))

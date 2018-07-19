@@ -74,9 +74,17 @@ vs_x_axis = DatetimeTickFormatter(
             months=dt_axis_format,
             years=dt_axis_format,
         )
-        
-wf_classes = ['Unclassified', 'Normal', 'Abnormal']  # read this from the workflow file as well - table: waveform_types
 
+wf_classes = ['Unclassified', 'Normal', 'Abnormal']  # read this from the workflow file as well - table: waveform_types
+#wf_types = ['ABP', 'CVP']
+#wf_names = [['ABP', 'DateTime', 'AR1-M', 'AR2-M', 'AR3-M'], ['CVP', 'DateTime', 'CVP1', 'CVP2']]
+wf_types = ['AR1-M','AR2-M','AR3-M','CVP1','CVP2']
+wf_names = [['AR1-M','DateTime'],['AR2-M','DateTime'],['AR3-M','DateTime'],['CVP1','DateTime'],['CVP2','DateTime']]
+wf_radio_button = RadioButtonGroup ( labels = wf_types, active = 0)
+wf_selected = wf_types[wf_radio_button.active]
+
+
+visual_vitals = ['HR','SPO2-%','PVC','NBP-M']
 ################################## Miscellaneous functions ##################################
 
 def duration_HMS(start, stop):
@@ -109,10 +117,10 @@ for selected_index in range(0, len(files)):
     cur_file_name = files.filename[selected_index] # the current file should be the file selected from the files table in db_file
     active_file = files.path[selected_index]
     vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
-    if not set(['ABP', 'AR1-M','AR2-M','AR3-M']).isdisjoint(list(vs_sum.data)):
+    if not set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):
         break
-if set(['ABP', 'AR1-M','AR2-M','AR3-M']).isdisjoint(list(vs_sum.data)):  
-    raise('No ' + 'ABP' + 'signal')
+if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):  
+    raise('No ' + wf_types[wf_radio_button.active] + 'signal')
 
 ################################## File Management ##################################
 
@@ -124,7 +132,7 @@ def update():
     # Get the row number of the selected file
     selected_index_temp = file_table.selected["1d"]["indices"][0]
     # Check that the selected file has the waveform of interest
-    if set(['ABP', 'AR1-M','AR2-M','AR3-M']).isdisjoint(list(waveform.Summary(file_table.data['path'][selected_index_temp]).data)):
+    if set(wf_names[wf_radio_button.active]).isdisjoint(list(waveform.Summary(file_table.data['path'][selected_index_temp]).data)):
         # If it isn't there, ignore the change
         if warn_txt not in file_layout.children:
             file_layout.children.append(warn_txt)
@@ -147,45 +155,26 @@ def update():
     selected_file.text = 'Current File: '+ str(active_file.split('\\')[-1])
     # Update the source of the plots
     vs_sum = waveform.Summary(active_file)
-    
+   
+    # Reset vitals selections
+    for elem in wf_types:
+        if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+    for elem in visual_vitals:
+        if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+
+    vs_source.data = ColumnDataSource(data=vs_sum.data).data
+     
     date_range_slider.start = pd.to_datetime(min(vs_sum.data.index)).timestamp()*1000
     date_range_slider.end = pd.to_datetime(max(vs_sum.data.index)).timestamp()*1000
     date_range_slider.value = (date_range_slider.start, date_range_slider.end)
-    p_ABP.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
-    
-    # Reset vitals selections
-    while vs_plots.children:
-        vs_plots.children.pop()
-    while checkbox_group.labels:
-        checkbox_group.labels.pop()
-    
-    if 'AR1-M' not in list(vs_sum.data): vs_sum.data['AR1-M'] = [np.nan] * len(vs_sum.data.index)
-    if 'AR2-M' not in list(vs_sum.data): vs_sum.data['AR2-M'] = [np.nan] * len(vs_sum.data.index)
-    if 'AR3-M' not in list(vs_sum.data): vs_sum.data['AR3-M'] = [np.nan] * len(vs_sum.data.index)
-    if 'ABP' not in list(vs_sum.data): vs_sum.data['ABP'] = [np.nan] * len(vs_sum.data.index)
-    
-    p_dict.clear()
-    for elem in list(vs_sum.data):
-        if elem in ['ABP', 'DateTime', 'AR1-M', 'AR2-M', 'AR3-M']:
-            continue
-        p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height,x_range = p_ABP.x_range)
-        p_temp.xaxis.formatter = vs_x_axis
-        p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
-        p_dict[elem] = p_temp
-    vs_source.data = ColumnDataSource(data=vs_sum.data).data
-
-    #p_ABP.x_range.start = pd.to_datetime(min(vs_sum.data.index)).timestamp()*1000
-    #p_ABP.x_range.end = pd.to_datetime(max(vs_sum.data.index)).timestamp()*1000
-    checkbox_group.labels = list(p_dict)
-    checkbox_group.active = list(range(len(p_dict)))
-    for elem in p_dict:
-        vs_plots.children.append(p_dict[elem])
-    
+    p_main.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
+    p_main.x_range.start = date_range_slider.start
+    p_main.x_range.end = date_range_slider.end
     print('New file selected: {}'.format(cur_file_name))
     
 ## File management widgets ##
 sel_file_txt = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
-warn_txt = Paragraph(text='No ' + 'ABP' + ' found in selection')
+warn_txt = Paragraph(text='No ' + wf_selected + ' found in selection')
 sel_file_button = Button(label='Change File',button_type='success')
 
 files['start_time'] = pd.to_datetime(files['start_time'])
@@ -214,10 +203,8 @@ file_tab = Panel(child=file_layout, title='File Management')
 
 vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
 
-if 'AR1-M' not in list(vs_sum.data): vs_sum.data['AR1-M'] = [np.nan] * len(vs_sum.data.index)
-if 'AR2-M' not in list(vs_sum.data): vs_sum.data['AR2-M'] = [np.nan] * len(vs_sum.data.index)
-if 'AR3-M' not in list(vs_sum.data): vs_sum.data['AR3-M'] = [np.nan] * len(vs_sum.data.index)
-if 'ABP' not in list(vs_sum.data): vs_sum.data['ABP'] = [np.nan] * len(vs_sum.data.index)
+for elem in wf_types:
+    if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
 
 vs_source = ColumnDataSource (data=vs_sum.data)
 
@@ -234,42 +221,39 @@ vs_width = 1200
 vs_height = 250
 
 # Plot ABP (Change this so that it can be changed to CVP etc.) 
-p_ABP = figure(y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
+p_main = figure(y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
            tools=['box_zoom', 'xwheel_zoom', 'pan', vs_hover, 'reset','crosshair'], y_range=(0, 200), 
-               plot_width=vs_width, plot_height=vs_height, title = 'Vitals Summary for file: {}'.format(cur_file_name ))
-p_ABP.title.align = 'center'
+               plot_width=vs_width, plot_height=vs_height, title = 'ABP Summary for file: {}'.format(cur_file_name ))
+p_main.title.align = 'center'
 
+p_main.xaxis.formatter = vs_x_axis
 
-p_ABP.xaxis.formatter = vs_x_axis
-r_AR1 = p_ABP.line('DateTime', 'AR1-M', source=vs_source, line_color = next(colors))
-r_AR2 = p_ABP.line('DateTime', 'AR2-M', source=vs_source, line_color = next(colors))
-r_AR3 = p_ABP.line('DateTime', 'AR3-M', source=vs_source, line_color = next(colors))
-r_ABP = p_ABP.line('DateTime', 'ABP', source=vs_source, line_color = next(colors))
+r_main = [p_main.line('DateTime', elem, source=vs_source, line_color = next(colors)) for elem in wf_types]
+for elem in r_main: elem.glyph.line_alpha =0
+r_main[wf_radio_button.active].glyph.line_alpha = 1
   
 # Start span represents the beginning of the area of interest
 start_span = Span(location=min(vs_sum.data.index).timestamp()*1000,
                   dimension='height', line_color='green',
                   line_dash='dashed', line_width=3)
-p_ABP.add_layout(start_span)
+p_main.add_layout(start_span)
 
 # End span represents the end of the area of interest
 end_span = Span(location=max(vs_sum.data.index).timestamp()*1000,
                   dimension='height', line_color='red',
                   line_dash='dashed', line_width=3)
-p_ABP.add_layout(end_span)
+p_main.add_layout(end_span)
 
 p_dict = {}
 
-for elem in list(vs_sum.data):
-    if elem in ['ABP', 'DateTime', 'AR1-M', 'AR2-M', 'AR3-M']:
-        continue
+for elem in visual_vitals:
+    if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
     p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
     p_temp.xaxis.formatter = vs_x_axis
-    p_temp.x_range = p_ABP.x_range
+    p_temp.x_range = p_main.x_range
     p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
     p_dict[elem] = p_temp
 
-  
 load_button = Button(label="Segment File", button_type="success")
 selected_file = Paragraph(text = 'Current File: {0:s}'.format(os.path.split(active_file)[-1]))
 
@@ -282,7 +266,19 @@ checkbox_group = CheckboxGroup(labels = list(p_dict), active = list(range(0,len(
 s = min(vs_sum.data.index).timestamp()*1000
 e = max(vs_sum.data.index).timestamp()*1000
 date_range_slider = RangeSlider(title="Date Range", start=s, end=e, value= (s, e), step=1, show_value = False, tooltips = False)
-    
+
+def wf_switch(attr, old, new):
+    if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):
+        print(wf_types[wf_radio_button.active] + ' not in selected file')
+        wf_radio_button.active = old
+    else:
+        p_main.yaxis.axis_label = wf_types[wf_radio_button.active]
+        p_main.title.text = wf_types[wf_radio_button.active] + ' Summary for file: {}'.format(cur_file_name )
+        for r in r_main:
+            r.glyph.line_alpha = 0
+        r_main[wf_radio_button.active].glyph.line_alpha =1 
+
+
 def load_cb ():
     global wf
     global wvt
@@ -299,13 +295,16 @@ def load_cb ():
     start_str = vs_start.strftime('%Y%m%d-%H%M%S')
     end_str = vs_end.strftime('%Y%m%d-%H%M%S')
     wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True )
-    wvt = waveform.ABPWavelet(wf, process=True)
+    if wf_types[wf_radio_button.active] == 'ABP':
+        wvt = waveform.ABPWavelet(wf, process=True)
+    elif wf_types[wf_radio_button.active] == 'CVP':
+        wvt = waveform.ABPWavelet(wf, process=True)
     print ('Read complete')
     
     seg_slider.value = 1
     seg_slider.end=len(wf.segments)
     wf_source.data = ColumnDataSource(wf.segments[1]).data
-    p.line('index','ABP',source=wf_source,color = next(colors))
+    p.line('index',wf_selected,source=wf_source,color = next(colors))
     p_wf_II.line('index','II',source=wf_source,color = next(colors))
     
     load_button.disabled = False
@@ -336,16 +335,15 @@ def date_time_slider(attr, old, new):
     start_span.location = dates[0]
     end_span.location = dates[1]
 
-
 load_button.on_click(load_cb)
 checkbox_group.on_click(checkbox_click_handler)
 date_range_slider.on_change('value',date_time_slider)
-#wf_radio_button.on_change('active',wf_switch)
+wf_radio_button.on_change('active',wf_switch)
 
 vs_layout = column()
-#vs_layout.children.append(widgetbox(wf_radio_button, selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
-vs_layout.children.append(widgetbox(selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
-vs_layout.children.append(p_ABP)
+vs_layout.children.append(widgetbox(wf_radio_button, selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
+#vs_layout.children.append(widgetbox(selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
+vs_layout.children.append(p_main)
 vs_plots = column()
 
 for elem in p_dict:
@@ -422,7 +420,6 @@ save_seg_button = Button(label='Save Segment', button_type='success', disabled =
 seg_slider.on_change('value', callback)    
 save_seg_button.on_click(save_button_cb)
     
-
 rbg = RadioButtonGroup ( labels = wf_classes, active = 0)
 plus = Button(label = '+')
 minus = Button(label = '-')
