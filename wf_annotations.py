@@ -48,8 +48,11 @@ def _read_chunk (filename, chunk_number, chunk_length = 60):
     else:
         chunk = store.select('Waveforms', start = start, stop = stop)
         store.close()
+
+        chunk.dropna(axis=1,how='all')
         return chunk
- 
+
+#rename wfs 
     
 def _read_time (filename, start, duration = 60):
 # read a segment of the specified file with default duration of 60 seconds
@@ -58,7 +61,11 @@ def _read_time (filename, start, duration = 60):
     end_time = start_time + pd.to_timedelta(duration, 'S')
 
     df = pd.read_hdf(filename,'Waveforms', where = 'index>start_time & index<end_time')
+    df.dropna(axis=1,how='all')
 
+#rename wfs
+
+    
     return df
 
 #df2 = pd.read_hdf('Case001.hd5','Waveforms',where="index>'2017-11-14 16:46' & index<'2017-11-14 16:47'", \
@@ -117,8 +124,42 @@ def process_chunk (df):
     return QF, MAP, R_ts
 
 
+#class WaveChunk():
+# ABP_templates
+# PPG_templates
+# ECG_templates
+# SQI
+# PPV
+# r_peaks
+# duration (s)
+#
+# methods:
+    # read_duration
+    # read_chunk
+    
+#@staticmethod
+def _compare_chunks (chunk1, chunk2):
+# plot chunk templates and calculated parameters side by side
+# do this with chunks already read.. so this takes objects
+    
+    pass
+
+def CompareChunks(filename, n1, n2, chunk_duration):
+# read two times as WaveChunks of chunk_duration
+# process them
+# plot side by side using _compare_chunks
+    
+    pass
+
+def CompareTime (filename, t1, t2, chunk_duration):
+# read two times as WaveChunks of chunk_duration
+# process them
+# plot side by side using _compare_chunks
+    pass
+
 
 def process_file(filename):
+# read the specified file chunk by chunk and save the annotations as hdf5 datasets in the original file
     
     quality = {}
     R_list = []
