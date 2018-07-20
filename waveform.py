@@ -74,7 +74,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
     ECG_cols = ['I','II','III','V']
 #    SQI_threshold = 0.6  # SQI below this will not be converted to wavelets
     
-    def __init__(self, filename=None, start=0, duration=0, end=0, process=False, level=8):
+    def __init__(self, filename=None, start=0, duration=0, end=0, process=False, level=8, seg_channel = 'ABP'):
     # if information is supplied on initialization, read the waveform and vitals from the given file
         if filename is not None:
             print ('Initializing and reading from file {}'.format(filename))
@@ -89,6 +89,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         self.seg_level = level
         self.seg_start_time = {}
         self.section_size = 0
+        self.seg_channel = seg_channel
         
         if process:
         # automate pre-processing, segmentation, etc
@@ -199,7 +200,10 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         self.segments = {}
         self.seg_start_time = {}
         for i in range(1, len(seg_idx)):
-            signal = waveform.iloc[seg_idx[i-1]:seg_idx[i]][['ABP','II']]
+            try: signal = waveform.iloc[seg_idx[i-1]:seg_idx[i]][[self.seg_channel,'II']]
+            except KeyError: 
+                self.seg_channel = self.seg_channel.split('-')[0] 
+                signal = waveform.iloc[seg_idx[i-1]:seg_idx[i]][[self.seg_channel,'II']]
             self.segments[i]=signal
             self.seg_start_time[i] = waveform.index[seg_idx[i]].round('s')
  
@@ -212,7 +216,7 @@ class Waveform(ABP_class, CVP_class, ECG_class):
         eng.addpath(r'./WFDB'); 
         
         for i in range(1, len(self.segments)+1):
-            seg = self.segments[i]['ABP']
+            seg = self.segments[i][self.seg_channel]
             seglist = seg.values.tolist()
 #            print ('Processing segment {}'.format(i))
             try:
@@ -422,6 +426,7 @@ class ABPWavelet (Waveform):
         self.MAP = waveform.MAP
         self.HR = waveform.HR
         self.seg_start_time = waveform.seg_start_time
+        self.seg_channel = waveform.seg_channel
         
         if process:
             self.processWaveform()
@@ -458,11 +463,126 @@ class ABPWavelet (Waveform):
         self.segmenter()
         scaler = MinMaxScaler(copy=True, feature_range=(0,1))
 #       print (len(self.segments))
+        for i in range(1, len(self.segments)+1):
+            #signal1 = waveform.head(3200)['AR1'] should just use the segments here *****
+            #signal = waveform.iloc[segments[i-1]:segments[i]]['ABP']
+            signal = self.segments[i][self.seg_channel]
+            if normalize:
+                signal = pd.DataFrame(scaler.fit_transform(signal.to_frame()) )[0]
+    
+            for coeff, label in zip(self.generateSWTCoeffs(signal, level), self.listCreator(level)):
+                for single_coeff, single_label in zip(coeff, label):
+                    nrgCoeff = self.calcEnergy(single_coeff)
+                    energy[single_label].append(nrgCoeff)
+        
+        
+        self.wavelets = pd.DataFrame(data=energy, index = np.arange(1,len(self.segments)+1)) # fix this
+        self.wavelets = self.wavelets.drop(['cA1', 'cA2', 'cA3', 'cA4', 'cA5', 'cA6', 'cA7', 'cD1', 'cD2'], axis=1)
+#        return self.wavelets
+
+#def wf_features (waveform):
+    @staticmethod   
+    def pre_process_mms(df):
+        mms = MinMaxScaler()
+#        if df is None:
+#            df = self.wavelets
+            
+        df[df.columns] = mms.fit_transform(df[df.columns])
+        
+        return df
+    
+    def _drop_bad (self, bad_list):
+        
+        self.wavelets = self.wavelets.drop(bad_list)
+    
+    def clean_bad_segs (self):
+        
+        self.check_times()
+        self._drop_bad(self.bad_times)
+        self._drop_bad(self.bad_segments)
+        
+    def generateFeatures (self):
+        # generate the wavelet feature dataframe (including MAP and HR)
+ #       self.processWaveform()
+        MAP = pd.Series(self.MAP,name='MAP')
+        HR = pd.Series(self.HR,name='HR')
+        
+        df = self.wavelets
+        df = df.join(MAP)
+        df = df.join(HR)
+        
+        self.wltFeatures = df
+        
+    def plot_heatmap (self):
+        # should apply some kind of scaling first
+        fig, ax = plt.subplots(figsize=(10,5)) 
+        sns.heatmap(self.wltFeatures.transpose(),cmap = 'jet', cbar = None)
+        plt.yticks(rotation = 0)
+        plt.show()
+        
+class CVPWavelet (Waveform):
+# ABPWavelet Class
+#Contains the original wave as well as segments of the ABP waveform
+# ( note: could extend this to include ECG segments if necessary)
+# Also contains the transformed data in the form of energy coeffs for the WT
+# Methods include transformation and clustering 
+
+    waves = [] # dataframe
+
+    wavelets = [] 
+    
+    def __init__ (self, waveform, process=True):
+        self.waves = waveform.waves
+        self.vitals = waveform.vitals  
+        self.seg_SQI = waveform.seg_SQI    # segment signal quality (array) - use to supress bad data before classification
+        self.bad_segments = waveform.bad_segments
+        self.Fs = waveform.Fs
+        self.seg_level = waveform.seg_level
+        self.MAP = waveform.MAP
+        self.HR = waveform.HR
+        self.seg_start_time = waveform.seg_start_time
+        self.seg_channel = waveform.seg_channel
+        
+        if process:
+            self.processWaveform()
+            self.generateFeatures()
+            #self.clean_bad_segs()
+
+    @staticmethod    
+    def listCreator(levels):
+        new_list = []
+        for i in range(levels, 0, -1):
+            new_list.append(["cA{0}".format(i),"cD{0}".format(i)])
+        return new_list
+    
+    @staticmethod
+    def generateSWTCoeffs(waveform, level=7):
+
+        db4 = pywt.Wavelet('db4')
+        return pywt.swt(waveform, db4, level=level)
+        #return (cA5a, cD5a), (cA4a, cD4a), (cA3a, cD3a), (cA2a, cD2a), (cA1a, cD1a) = pywt.swt(abp__signal_swt, db4, level=5)
+    
+    @staticmethod    
+    def calcEnergy(coeff):
+        return np.sqrt(np.sum(np.array(coeff ** 2)) / len(coeff))
+   
+    def processWaveform(self, window_multiplier=1, normalize=True):
+        energy = {}
+        level = self.seg_level
+#        waveform = self.waves
+    
+        for label in self.listCreator(level):
+            energy[label[0]] = []
+            energy[label[1]] = []
+    
+        self.segmenter()
+        scaler = MinMaxScaler(copy=True, feature_range=(0,1))
+#       print (len(self.segments))
     
         for i in range(1, len(self.segments)+1):
             #signal1 = waveform.head(3200)['AR1'] should just use the segments here *****
             #signal = waveform.iloc[segments[i-1]:segments[i]]['ABP']
-            signal = self.segments[i]['ABP']
+            signal = self.segments[i][self.seg_channel]
             if normalize:
                 signal = pd.DataFrame(scaler.fit_transform(signal.to_frame()) )[0]
     
@@ -528,4 +648,3 @@ def plot_summary_to_pdf(outfile, spath='./*.sum'):
             
             pdf.savefig()  # saves the current figure into a pdf page
             plt.close()
-    

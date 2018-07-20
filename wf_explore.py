@@ -76,15 +76,17 @@ vs_x_axis = DatetimeTickFormatter(
         )
 
 wf_classes = ['Unclassified', 'Normal', 'Abnormal']  # read this from the workflow file as well - table: waveform_types
-#wf_types = ['ABP', 'CVP']
+#vs_types = ['ABP', 'CVP']
 #wf_names = [['ABP', 'DateTime', 'AR1-M', 'AR2-M', 'AR3-M'], ['CVP', 'DateTime', 'CVP1', 'CVP2']]
-wf_types = ['AR1-M','AR2-M','AR3-M','CVP1','CVP2']
+vs_types = ['AR1-M','AR2-M','AR3-M','CVP1','CVP2']
+wf_present = {x:True for x in vs_types}
 wf_names = [['AR1-M','DateTime'],['AR2-M','DateTime'],['AR3-M','DateTime'],['CVP1','DateTime'],['CVP2','DateTime']]
-wf_radio_button = RadioButtonGroup ( labels = wf_types, active = 0)
-wf_selected = wf_types[wf_radio_button.active]
+wf_radio_button = RadioButtonGroup ( labels = vs_types, active = 0)
+wf_selected = vs_types[wf_radio_button.active]
 
-
+wf_types = ['AR1','AR2','AR3','CVP1','CVP2']
 visual_vitals = ['HR','SPO2-%','PVC','NBP-M']
+vitals_present = {x:True for x in visual_vitals}
 ################################## Miscellaneous functions ##################################
 
 def duration_HMS(start, stop):
@@ -111,7 +113,7 @@ def read_files (db_file):
 db_file = sys.argv[1] # db file is the master file for the workflow (contains files and classified segments)
 print ('Opening workflow file/database in {}'.format(db_file))
 files = read_files(db_file) # consider reading only files with specific status or filter the table (eg hide files that are already completed)
-
+vs_sum = None
 # open waveform file - this should be done in the file_management tab
 for selected_index in range(0, len(files)):
     cur_file_name = files.filename[selected_index] # the current file should be the file selected from the files table in db_file
@@ -120,7 +122,7 @@ for selected_index in range(0, len(files)):
     if not set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):
         break
 if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):  
-    raise('No ' + wf_types[wf_radio_button.active] + 'signal')
+    raise('No ' + vs_types[wf_radio_button.active] + 'signal')
 
 ################################## File Management ##################################
 
@@ -157,10 +159,16 @@ def update():
     vs_sum = waveform.Summary(active_file)
    
     # Reset vitals selections
-    for elem in wf_types:
-        if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+    for elem in vs_types:
+        if elem not in list(vs_sum.data): 
+            vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+            wf_present[elem] = False
+        else: wf_present[elem] = True 
     for elem in visual_vitals:
-        if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+        if elem not in list(vs_sum.data): 
+            vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+            vitals_present[elem] = False
+        else: vitals_present[elem] = True 
 
     vs_source.data = ColumnDataSource(data=vs_sum.data).data
      
@@ -201,10 +209,11 @@ file_tab = Panel(child=file_layout, title='File Management')
 
 ## Vitals Functions ##
 
-vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
-
-for elem in wf_types:
-    if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+for elem in vs_types:
+    if elem not in list(vs_sum.data): 
+        vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+        wf_present[elem] = False
+    else: wf_present[elem] = True       
 
 vs_source = ColumnDataSource (data=vs_sum.data)
 
@@ -228,7 +237,7 @@ p_main.title.align = 'center'
 
 p_main.xaxis.formatter = vs_x_axis
 
-r_main = [p_main.line('DateTime', elem, source=vs_source, line_color = next(colors)) for elem in wf_types]
+r_main = [p_main.line('DateTime', elem, source=vs_source, line_color = next(colors)) for elem in vs_types]
 for elem in r_main: elem.glyph.line_alpha =0
 r_main[wf_radio_button.active].glyph.line_alpha = 1
   
@@ -247,7 +256,10 @@ p_main.add_layout(end_span)
 p_dict = {}
 
 for elem in visual_vitals:
-    if elem not in list(vs_sum.data): vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+    if elem not in list(vs_sum.data): 
+        vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
+        vitals_present[elem] = False
+    else: vitals_present[elem] = True
     p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
     p_temp.xaxis.formatter = vs_x_axis
     p_temp.x_range = p_main.x_range
@@ -268,15 +280,15 @@ e = max(vs_sum.data.index).timestamp()*1000
 date_range_slider = RangeSlider(title="Date Range", start=s, end=e, value= (s, e), step=1, show_value = False, tooltips = False)
 
 def wf_switch(attr, old, new):
-    if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):
-        print(wf_types[wf_radio_button.active] + ' not in selected file')
-        wf_radio_button.active = old
-    else:
-        p_main.yaxis.axis_label = wf_types[wf_radio_button.active]
-        p_main.title.text = wf_types[wf_radio_button.active] + ' Summary for file: {}'.format(cur_file_name )
+    if wf_present[vs_types[wf_radio_button.active]]:
+        p_main.yaxis.axis_label = vs_types[wf_radio_button.active]
+        p_main.title.text = vs_types[wf_radio_button.active] + ' Summary for file: {}'.format(cur_file_name )
         for r in r_main:
             r.glyph.line_alpha = 0
-        r_main[wf_radio_button.active].glyph.line_alpha =1 
+        r_main[wf_radio_button.active].glyph.line_alpha =1
+    else:
+        print(vs_types[wf_radio_button.active] + ' not in selected file')
+        wf_radio_button.active = old 
 
 
 def load_cb ():
@@ -294,17 +306,20 @@ def load_cb ():
     
     start_str = vs_start.strftime('%Y%m%d-%H%M%S')
     end_str = vs_end.strftime('%Y%m%d-%H%M%S')
-    wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True )
-    if wf_types[wf_radio_button.active] == 'ABP':
+    
+    if 'AR' in vs_types[wf_radio_button.active]:
+        wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
         wvt = waveform.ABPWavelet(wf, process=True)
-    elif wf_types[wf_radio_button.active] == 'CVP':
-        wvt = waveform.ABPWavelet(wf, process=True)
+    elif 'CVP' in vs_types[wf_radio_button.active]:
+        wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
+        wvt = waveform.CVPWavelet(wf, process=True)
     print ('Read complete')
     
     seg_slider.value = 1
     seg_slider.end=len(wf.segments)
     wf_source.data = ColumnDataSource(wf.segments[1]).data
-    p.line('index',wf_selected,source=wf_source,color = next(colors))
+    p.yaxis.axis_label = wf_types[wf_radio_button.active]
+    p.line('index',wf_types[wf_radio_button.active],source=wf_source,color = next(colors))
     p_wf_II.line('index','II',source=wf_source,color = next(colors))
     
     load_button.disabled = False
@@ -369,6 +384,7 @@ def save_button_cb ():
     db_row['seg_class'] = choice # assign the classification to the entry row
     db_row['seg_start_time'] = wvt.seg_start_time[N]
     db_row['seg_length']  = wvt.section_size
+    db_row['channel']  = wvt.seg_channel
     # write to the database
     db = sqlite3.connect(db_file)
     db_row.to_sql("segments", db, if_exists='append', index=False)
