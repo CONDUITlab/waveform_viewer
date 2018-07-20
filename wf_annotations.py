@@ -31,12 +31,38 @@ def annotate_file (filename, ECG_lead = 'II', R_wave = True, SQI = True,
 
     pass
 
-def _read_chunk (filename, start_time, duration = 60):
-# read a segment of the specified file with default duration of 60 seconds
+def _read_chunk (filename, chunk_number, chunk_length = 60):
 
-pass
-
+    chunksize = chunk_length * 240
+    store = pd.HDFStore(filename)
     
+    nrows = store.get_storer('Waveforms').nrows
+#    n = chunk_number * chunksize   
+    start = chunk_number * chunksize
+    stop = (chunk_number + 1) * chunksize    
+    
+    if (stop > nrows):
+        raise ('_read_chunk: Index out of range')
+        store.close()
+        
+    else:
+        chunk = store.select('Waveforms', start = start, stop = stop)
+        store.close()
+        return chunk
+ 
+    
+def _read_time (filename, start, duration = 60):
+# read a segment of the specified file with default duration of 60 seconds
+    start_time = pd.to_datetime(start)
+    print ('Reading from {} for {} s'.format(start_time, duration))
+    end_time = start_time + pd.to_timedelta(duration, 'S')
+
+    df = pd.read_hdf(filename,'Waveforms', where = 'index>start_time & index<end_time')
+
+    return df
+
+#df2 = pd.read_hdf('Case001.hd5','Waveforms',where="index>'2017-11-14 16:46' & index<'2017-11-14 16:47'", \
+#                 columns=['AR2','II','III','V','SPO2'])
 
 def process_chunk (df):
     
