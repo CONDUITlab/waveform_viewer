@@ -125,7 +125,7 @@ def abp_templates (wf, seg_num):
     ecg_s=wf.chan_slice(['II'],seg_num).values.reshape(1,6400)[0]
     (ts, filtered, rpeaks, templates_ts, templates, HR_ts, HR)=ecg.ecg(ecg_s, sampling_rate=240., show=False)
     templates = extract_heartbeats(signal=abp, rpeaks=rpeaks, sampling_rate=240., before=0.0, after=0.8)
-    ts = np.linspace(1,(abp.index[-1]-abp.index[0]).total_seconds()/len(templates[0]),num=len(templates[1]))
+    ts = np.linspace(0,(abp.index[-1]-abp.index[0]).total_seconds()/len(templates[0]),num=len(templates[1]))
 
     return templates, ts
 
