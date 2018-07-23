@@ -98,7 +98,7 @@ class WaveChunk():
         R_ts = []
         feats_cols=['Sys_t','SBP','Dia_t','DBP','PP','MAP','Beat_P','mean_dyneg','End_sys_t','AUS','End_sys_t2','AUS2']
     
-        #biosppy for R-peaks
+        #biosppy for R-peaks - replace this with ECGPUWave library
         ECG_sig = df['II']
         try: 
             R_peaks = np.array(ecg.christov_segmenter(signal=ECG_sig.values, sampling_rate=240.))[0]
@@ -111,11 +111,6 @@ class WaveChunk():
         except:
             pass  
         
-        #matlab for sqi
-        # need to specify which AR channel here...
-        # drop NaN
-        # if AR1 in columns
-        # if AR2 in columns...
         df = df.dropna(axis=1,how='all')
         if 'AR1' in df.columns:
             seglist = df['AR1'].values.tolist()
@@ -151,15 +146,11 @@ class WaveChunk():
         # ABG templates
         # PPG_templates
         # ECG_templates
-        
-        
+          
         return QF, MAP, R_ts
-
 
 # PPV
 
-#
-    
 #@staticmethod
 def _compare_chunks (chunk1, chunk2):
 # plot chunk templates and calculated parameters side by side
@@ -216,29 +207,6 @@ def annotate_file (filename, ECG_lead = 'II', R_wave = True, SQI = True,
     
     R_ts.to_hdf(filename,'/Waveform_annotations/ecg/R_peaks', append = True, format = 'table')
     
-        
-#    outfile = hdf_file.split('.')[0] + '.csv'
-#    qdf.to_csv(outfile)
-
-
-## main loop
-
-#source = pd.read_csv('files.csv')
-#source=source.dropna()
-
-
-#for idx, row in source.iterrows():
-#    xml_file = row['filename']
-#    summary_file = row['ID'] + '.sum'
-#    hdf_file = row['ID'] + '.hd5'
-#    if idx > 3:
-#        print ('Parsing {}'.format(hdf_file))
-        
-        # do SQI calculations
-#        process_file (hdf_file)
-    # R-R intervals
-
-# main - process files in path specified in argv[1]
 
 def main ():
 
