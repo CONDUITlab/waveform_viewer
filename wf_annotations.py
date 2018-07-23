@@ -86,12 +86,12 @@ class WaveChunk():
             self.data = df
             return df
         
-    @staticmethod    
-    def process_chunk (self, chunk):
+    
+    def process_chunk (self, chunk = None):
 # if chunk is a WaveChunk then use the data attribute, otherwise treat it as a dataframe
  
-        if isinstance(chunk, WaveChunk):
-            df = chunk.data
+        if chunk is None:
+            df = self.data
         else:
             df = chunk
             
@@ -135,6 +135,8 @@ class WaveChunk():
             feats_df = pd.DataFrame(data=np.asarray(feats),columns=feats_cols)
             MAP = feats_df['MAP'].mean()
             self.features = feats_df
+            self.SQI = QF
+            self.avg_MAP = MAP
     #        print ('MAP = {0:0.2f}, SQI = {1:0.1f}'.format(MAP, QF))
         except:
     #        print ('Error')
@@ -249,7 +251,7 @@ def main ():
     
     for file in files:
         print('Processing {}'.format(file))
-        process_file(file)
+#        process_file(file)
 
 if __name__ == "__main__":
 
