@@ -404,7 +404,31 @@ class Summary:
         elif('CVP2' in self.data.columns) & ('CVP1' not in self.data.columns):
             print ('CVP2 is CVP channel, renaming')
             self.data.rename(columns={'CVP2':'CVP'},inplace=True)
+
+class CVPWaveform(Waveform):
+    def wf_features (self):
+        # use MATLAB and wfdb code to generate features df and signal quality
         
+        eng = matlab.engine.start_matlab()
+        eng.addpath(r'/.');
+        eng.addpath(r'./WFDB'); 
+        
+        self.PVI = {} # pleth variability index
+        self.HR = {}
+        for i in range (1, len(self.segments)+1):
+            if i not in self.bad_segments:
+                if 'SPO2' in self.waves.columns:
+                    spo2 = self.chan_slice('SPO2', i)
+                    self.PVI[i]=( spo2.max()-spo2.min() )/ spo2.max()
+            else:
+                self.PVI[i]= 0
+            try:
+                lead1 = self.chan_slice('I',i)
+                self.HR[i] = ecg.ecg(lead1.values, sampling_rate = self.Fs, show = False)[6].mean()  
+            except:
+                print ('Error with HR on segment {}'.format(i))
+                self.HR[i] = 0
+            
 class ABPWavelet (Waveform):
 # ABPWavelet Class
 #Contains the original wave as well as segments of the ABP waveform
@@ -538,7 +562,6 @@ class CVPWavelet (Waveform):
         self.bad_segments = waveform.bad_segments
         self.Fs = waveform.Fs
         self.seg_level = waveform.seg_level
-        self.MAP = waveform.MAP
         self.HR = waveform.HR
         self.seg_start_time = waveform.seg_start_time
         self.seg_channel = waveform.seg_channel
@@ -620,11 +643,9 @@ class CVPWavelet (Waveform):
     def generateFeatures (self):
         # generate the wavelet feature dataframe (including MAP and HR)
  #       self.processWaveform()
-        MAP = pd.Series(self.MAP,name='MAP')
         HR = pd.Series(self.HR,name='HR')
         
         df = self.wavelets
-        df = df.join(MAP)
         df = df.join(HR)
         
         self.wltFeatures = df

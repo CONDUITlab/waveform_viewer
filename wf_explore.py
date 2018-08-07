@@ -43,13 +43,14 @@ import os.path
 import itertools
 
 from math import pi
-from bokeh.models import DatetimeTickFormatter
+import matlab.engine
+from bokeh.models import DatetimeTickFormatter, PointDrawTool
 
 from bokeh.plotting import figure 
 from bokeh.palettes import Category10
 from bokeh.io import output_notebook, show, output_file, curdoc
 from bokeh.layouts import column, row, layout
-from bokeh.models import ColumnDataSource, HoverTool, RadioButtonGroup, Span
+from bokeh.models import ColumnDataSource, HoverTool, RadioButtonGroup, Span, LinearAxis, Range1d
 from bokeh.layouts import widgetbox
 from bokeh.models.widgets import Slider, RangeSlider, CheckboxGroup,  Button, TextInput, Paragraph
 from bokeh.models.widgets import Panel, Tabs
@@ -57,6 +58,10 @@ from bokeh.models.widgets import DataTable, DateFormatter, TableColumn
 import sys
 import waveform
 
+from participant import participant
+from xlrd import open_workbook
+import os
+import glob
 hover = HoverTool(
     tooltips=[
         ('Time','@index{%H:%M:%S:%3Nms}'),
@@ -87,6 +92,17 @@ wf_selected = vs_types[wf_radio_button.active]
 wf_types = ['AR1','AR2','AR3','CVP1','CVP2']
 visual_vitals = ['HR','SPO2-%','PVC','NBP-M']
 vitals_present = {x:True for x in visual_vitals}
+
+if 'linux' in sys.platform:
+    base_path = '/mnt/'
+else:
+    base_path = 'Y:/'
+
+dir_in_str = os.fsencode(base_path + 'data03/workspace/pressorsHRV/data/patient_files/')
+dir_waveform_str = os.fsencode(base_path + 'data03/workspace/pressorsHRV/csvCombined/BP/')
+dir_HRV_str = os.fsencode(base_path + 'data03/workspace/pressorsHRV/csvCombined/new/')
+dicts = []
+
 ################################## Miscellaneous functions ##################################
 
 def duration_HMS(start, stop):
@@ -104,10 +120,50 @@ colors = color_gen()
 
 # Reads input .hdf files from .db file
 def read_files (db_file):
-   db = sqlite3.connect(db_file)
-   df = pd.read_sql('select * from files',db)
-   db.close()
-   return df
+    if not os.path.isfile(db_file):
+        raise Exception('.db file does not exist')
+    db = sqlite3.connect(db_file)
+    df = pd.read_sql('select * from files',db)
+    db.close()
+    return df
+   
+def getHRV():
+    found = False
+    for file in os.listdir(dir_in_str):
+        if cur_file_name.split('_')[0] == file.replace(b' ',b'').split(b'-')[0].decode("utf-8"):
+            filename = os.fsdecode(file)
+            if filename.endswith('.xlsx'): #open excel files
+                fn = filename.replace(" ","")
+                base = fn.split(".")[0]
+                bbase = base.split("-")[0]
+                print('Found pressor file: ' + bbase)
+                #load excel patient data
+                wb = open_workbook(dir_in_str.decode("utf-8")+file.decode("utf-8"))
+                p = participant(wb)
+                #create the data frames
+                p.create_dfs_all()
+                #get waveform files
+                HRVfiles = glob.glob(dir_waveform_str.decode("utf-8")+bbase+'_MAP.*')
+                if len(HRVfiles) > 0:
+                    p.add_AdditionalWaveforms(HRVfiles[0])
+                else:
+                    p.DF_Waveforms = None
+                #get HRV files
+                HRVfiles = glob.glob(dir_HRV_str.decode("utf-8")+bbase+'_HRV.*')
+                if len(HRVfiles) > 0:
+                    p.add_HRV(HRVfiles[0])
+                else:
+                    p.DF_HRV = None
+            found = True
+            break
+    if not found:
+        print('No pressor file found')
+        return None
+    p.DFpressors = p.DFpressors.drop(['study_id'],axis='columns')
+    p.DFpressors['DateTime'] = p.DFpressors.index
+    p.DFpressors = p.DFpressors.melt(id_vars=['DateTime']).dropna(axis='rows',how='any').set_index('DateTime')
+    pressor_source.data = ColumnDataSource(p.DFpressors).data
+    return p
    
 # open database file
 db_file = sys.argv[1] # db file is the master file for the workflow (contains files and classified segments)
@@ -123,6 +179,8 @@ for selected_index in range(0, len(files)):
         break
 if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):  
     raise('No ' + vs_types[wf_radio_button.active] + 'signal')
+pressor_source = ColumnDataSource()
+p = getHRV()
 
 ################################## File Management ##################################
 
@@ -152,6 +210,7 @@ def update():
     selected_index = selected_index_temp
     cur_file_name = file_table.data['filename'][selected_index]
     active_file = file_table.data['path'][selected_index]
+    p = getHRV()
     sel_file_txt.text = 'Current File: '+ str(active_file.split('\\')[-1])
     cur_file_box.text = 'Current File: '+ str(active_file.split('\\')[-1])
     selected_file.text = 'Current File: '+ str(active_file.split('\\')[-1])
@@ -231,8 +290,8 @@ vs_height = 250
 
 # Plot ABP (Change this so that it can be changed to CVP etc.) 
 p_main = figure(y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
-           tools=['box_zoom', 'xwheel_zoom', 'pan', vs_hover, 'reset','crosshair'], y_range=(0, 200), 
-               plot_width=vs_width, plot_height=vs_height, title = 'ABP Summary for file: {}'.format(cur_file_name ))
+           tools=['box_zoom', 'wheel_zoom', 'pan', vs_hover, 'reset','crosshair'], y_range=(0, 200), 
+               plot_width=vs_width, plot_height=int(vs_height*1.3), title = 'ABP Summary for file: {}'.format(cur_file_name ))
 p_main.title.align = 'center'
 
 p_main.xaxis.formatter = vs_x_axis
@@ -253,6 +312,23 @@ end_span = Span(location=max(vs_sum.data.index).timestamp()*1000,
                   line_dash='dashed', line_width=3)
 p_main.add_layout(end_span)
 
+# Setting the second y axis range name and range
+p_main.extra_y_ranges = {"pressor": Range1d(start=0, end=20)}
+
+# Adding the second axis to the plot.  
+p_main.add_layout(LinearAxis(y_range_name="pressor"), 'right')
+if p:
+    pressor_glyph = p_main.circle(x = 'DateTime',y='value',source = pressor_source,color = next(colors),y_range_name="pressor")
+    PressorHoverTool = HoverTool(
+        name= 'Pressor Hover',
+        renderers = [pressor_glyph],
+        tooltips=[
+            ( 'Pressor',   '@variable'            ),
+            ( 'Amount',  '@value' ), # use @{ } for field names with spaces
+        ]
+    )
+    p_main.add_tools(PressorHoverTool)
+         
 p_dict = {}
 
 for elem in visual_vitals:
@@ -260,7 +336,7 @@ for elem in visual_vitals:
         vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
         vitals_present[elem] = False
     else: vitals_present[elem] = True
-    p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=vs_height)
+    p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=int(vs_height*1.3),tools=['box_zoom', 'xwheel_zoom', 'pan'])
     p_temp.xaxis.formatter = vs_x_axis
     p_temp.x_range = p_main.x_range
     p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
@@ -311,21 +387,42 @@ def load_cb ():
         wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
         wvt = waveform.ABPWavelet(wf, process=True)
     elif 'CVP' in vs_types[wf_radio_button.active]:
-        wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
+        wf = waveform.CVPWaveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
         wvt = waveform.CVPWavelet(wf, process=True)
-    print ('Read complete')
     
     seg_slider.value = 1
     seg_slider.end=len(wf.segments)
     wf_source.data = ColumnDataSource(wf.segments[1]).data
-    p.yaxis.axis_label = wf_types[wf_radio_button.active]
-    p.line('index',wf_types[wf_radio_button.active],source=wf_source,color = next(colors))
-    p_wf_II.line('index','II',source=wf_source,color = next(colors))
+    p_seg.yaxis.axis_label = wf_types[wf_radio_button.active]
+
+    p_seg.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    p_seg.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+
+    if p:
+        p_subset = p.DFpressors.loc[(p.DFpressors.index >= vs_start) & (p.DFpressors.index <= vs_end)]
+        for elem in p_subset.index:
+            print(int((elem - vs_start) / ((vs_end - vs_start) / len(wf.segments))+1))
+        pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
     
+    wf_line.glyph.y = wf_types[wf_radio_button.active]
+    p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    if show_peaks.active:
+        df = pd.DataFrame(wf_source.data)
+        df['DateTime'] = wf_source.data['index']
+        try: ind = [x.item() for x in pd.to_numeric(df['index'])]
+        except AttributeError: ind = list(pd.to_numeric(df['index']))
+        
+        try: ecg = [x.item()*1000 for x in df['II']]
+        except AttributeError: ecg = list(df['II']*1000)
+        ann, anntype = eng.wrapper(ind,ecg,'wf_files/'+active_file.split('\\')[-1].split('.')[0],240,nargout=2)
+        R_peaks = [int(ann[i][0]) for i, e in enumerate(anntype) if e == 'N']
+        ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data
     load_button.disabled = False
     disable_wf_panel(False)
     load_button.label = 'Segment File'
     load_button.button_type = 'success'
+    print ('Read complete')
     
     
 def checkbox_click_handler(selected_checkboxes):
@@ -411,51 +508,86 @@ def callback (attr, old, new):
     # add functionality to update the segment classification selector based on previously assigned classification (eg rbg.active)
     
     N = seg_slider.value
-    try: 
-        wf_source.data = ColumnDataSource(wf.segments[N]).data
-        p.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-        p.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
-        p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-        p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
-    except NameError: print('wf not defined yet. Sldier change is null')
+
+    wf_source.data = ColumnDataSource(wf.segments[N]).data
+    pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
+    if show_peaks.active:
+        df = pd.DataFrame(wf_source.data)
+        df['DateTime'] = wf_source.data['index']
+
+        try: ind = [x.item() for x in pd.to_numeric(df['index'])]
+        except AttributeError: ind = list(pd.to_numeric(df['index']))
+        try: ecg = [x.item()*1000 for x in df['II']]
+        except AttributeError: ecg = list(df['II']*1000)
+        ann, anntype = eng.wrapper(ind,ecg,'wf_files/'+active_file.split('\\')[-1].split('.')[0],240,nargout=2)
+        R_peaks = [int(ann[i][0]) for i, e in enumerate(anntype) if e == 'N']
+        ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data
+
+    p_seg.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    p_seg.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    
 
 cur_file_box = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
 
 # initially fill source with a blank dataframe and update it when then region of interest is selected in the vitals tab
-wf_source=ColumnDataSource()
 
-p = figure(x_axis_label='Datetime',y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
+wf_source=ColumnDataSource(pd.read_hdf(active_file,key='Waveforms',stop=1))
+df = pd.DataFrame(wf_source.data)
+df['DateTime'] = wf_source.data['index']
+ann_source = ColumnDataSource(df)
+
+p_seg = figure(x_axis_label='Datetime',y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
           tools=['box_zoom', 'xwheel_zoom', 'pan', hover, 'reset','crosshair'], plot_width=1000, plot_height = 400)
+
 p_wf_II = figure(x_axis_label='Datetime',y_axis_label='II (mV)', x_axis_type='datetime', 
           tools=['box_zoom', 'xwheel_zoom', 'pan', hover, 'reset','crosshair'], plot_width=1000, plot_height = 400)
-p_wf_II.x_range = p.x_range
+p_wf_II.x_range = p_seg.x_range
+
+wf_line = p_seg.line('index',wf_types[wf_radio_button.active], source=wf_source, color = next(colors))
+
+p_seg.extra_y_ranges = {"pressor_wf": Range1d(start=0, end=20)}
+p_seg.add_layout(LinearAxis(y_range_name="pressor_wf"), 'right')
+if p:
+    pressor_seg = ColumnDataSource(p.DFpressors)
+    pressor_seg_glyph = p_seg.circle(x = 'DateTime',y='value',source = pressor_seg,color = 'red',y_range_name="pressor_wf")
+    PressorSegHoverTool = HoverTool(
+        name= 'Pressor Hover',
+        renderers = [pressor_seg_glyph],
+        tooltips=[
+            ( 'Pressor',   '@variable'),
+            ( 'Amount',  '@value' ),
+        ]
+    )
+    p_seg.add_tools(PressorSegHoverTool)
+p_wf_II.line('index','II', source=wf_source, color = next(colors))
+II_c = p_wf_II.circle(x='DateTime',y='II',source=ann_source,color=next(colors))
+point_draw = PointDrawTool(renderers=[II_c])
+p_wf_II.add_tools(point_draw)
 
 seg_slider = Slider(start=1, end=2, value=1, step=1, title="Segment", disabled = True)
 save_seg_button = Button(label='Save Segment', button_type='success', disabled = True)
     
 seg_slider.on_change('value', callback)    
 save_seg_button.on_click(save_button_cb)
-    
+show_peaks = CheckboxGroup(labels = ['R Peaks'], active = [0])
 rbg = RadioButtonGroup ( labels = wf_classes, active = 0)
 plus = Button(label = '+')
 minus = Button(label = '-')
 plus.on_click(slider_plus)
 minus.on_click(slider_minus)
 
-wf_layout = layout(children = [cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button])
-wf_layout.children.append(p)
+wf_layout = layout(children = [show_peaks, cur_file_box, row(minus, seg_slider, plus), rbg, save_seg_button])
+wf_layout.children.append(p_seg)
 wf_layout.children.append(p_wf_II)
 wf_tab = Panel(child = wf_layout, title = 'Waveforms')
 
 ##################################  Bokeh Output ##################################
-
+eng = matlab.engine.start_matlab();
+eng.addpath(r'./WFDB'); # location of ecgpuwave matlab functions
+eng.addpath(r'./mcode'); 
 # combine the panels and plot
 layout = Tabs(tabs=[ file_tab, vs_tab, wf_tab])
 
 curdoc().add_root(layout)
-
-# If not being executed on bokeh server, these will provide output for user
-#output_file('wf_view.html')
-#show (layout)
-
-
