@@ -62,6 +62,8 @@ from participant import participant
 from xlrd import open_workbook
 import os
 import glob
+
+# Hover tool definitions
 hover = HoverTool(
     tooltips=[
         ('Time','@index{%H:%M:%S:%3Nms}'),
@@ -69,8 +71,16 @@ hover = HoverTool(
     ],
     mode='vline'
     )
-    
 hover.formatters = {'index':'datetime'}
+
+vs_hover = HoverTool(
+    tooltips=[
+        ('Time','@DateTime{%Y-%m-%d-%H:%M}'),
+        ('index','$index')
+    ],
+    mode='vline'
+    )
+vs_hover.formatters = {'DateTime':'datetime'}
 
 dt_axis_format = ["%d-%m-%Y %H:%M"]
 vs_x_axis = DatetimeTickFormatter(
@@ -81,18 +91,16 @@ vs_x_axis = DatetimeTickFormatter(
         )
 
 wf_classes = ['Unclassified', 'Normal', 'Abnormal']  # read this from the workflow file as well - table: waveform_types
-#vs_types = ['ABP', 'CVP']
-#wf_names = [['ABP', 'DateTime', 'AR1-M', 'AR2-M', 'AR3-M'], ['CVP', 'DateTime', 'CVP1', 'CVP2']]
+
 vs_types = ['AR1-M','AR2-M','AR3-M','CVP1','CVP2']
 wf_present = {x:True for x in vs_types}
 wf_names = [['AR1-M','DateTime'],['AR2-M','DateTime'],['AR3-M','DateTime'],['CVP1','DateTime'],['CVP2','DateTime']]
 wf_radio_button = RadioButtonGroup ( labels = vs_types, active = 0)
-wf_selected = vs_types[wf_radio_button.active]
 
 wf_types = ['AR1','AR2','AR3','CVP1','CVP2']
 visual_vitals = ['HR','SPO2-%','PVC','NBP-M']
-vitals_present = {x:True for x in visual_vitals}
 
+# Change path depending on server use 
 if 'linux' in sys.platform:
     base_path = '/mnt/'
 else:
@@ -105,12 +113,14 @@ dicts = []
 
 ################################## Miscellaneous functions ##################################
 
+# Returns the time difference between two datetimes in hours, minutes and seconds respectively
 def duration_HMS(start, stop):
     duration = (stop-start).total_seconds()
     hours, remainder = divmod(duration, 3600)
     minutes, seconds = divmod (remainder, 60)
     return hours, minutes, seconds
 
+#Bokeh color iterator
 def color_gen():
     for arg in itertools.cycle(Category10[10]):
         yield arg 
@@ -126,7 +136,8 @@ def read_files (db_file):
     df = pd.read_sql('select * from files',db)
     db.close()
     return df
-   
+
+# Attempts to find HRV data based on file name    
 def getHRV():
     found = False
     for file in os.listdir(dir_in_str):
@@ -159,10 +170,11 @@ def getHRV():
     if not found:
         print('No pressor file found')
         return None
+    # Convert the pressor data into a format more suitable for plotting
     p.DFpressors = p.DFpressors.drop(['study_id'],axis='columns')
     p.DFpressors['DateTime'] = p.DFpressors.index
     p.DFpressors = p.DFpressors.melt(id_vars=['DateTime']).dropna(axis='rows',how='any').set_index('DateTime')
-    pressor_source.data = ColumnDataSource(p.DFpressors).data
+    pressor_source.data = ColumnDataSource(p.DFpressors).data # updates pressor plot source
     return p
    
 # open database file
@@ -177,6 +189,7 @@ for selected_index in range(0, len(files)):
     vs_sum = waveform.Summary(active_file) # Get summary of vitals from active file
     if not set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):
         break
+# If the selected waveform cannot be found raise an error
 if set(wf_names[wf_radio_button.active]).isdisjoint(list(vs_sum.data)):  
     raise('No ' + vs_types[wf_radio_button.active] + 'signal')
 pressor_source = ColumnDataSource()
@@ -186,11 +199,11 @@ p = getHRV()
 
 ## File Management callbacks ##
 def update():
-    global active_file 
-    global selected_index 
-    global vs_source
+    global active_file, selected_index, vs_source
     # Get the row number of the selected file
     selected_index_temp = file_table.selected["1d"]["indices"][0]
+    # Change warning to match selection
+    warn_txt.text = 'No ' + vs_types[wf_radio_button.active] + ' found in selection'
     # Check that the selected file has the waveform of interest
     if set(wf_names[wf_radio_button.active]).isdisjoint(list(waveform.Summary(file_table.data['path'][selected_index_temp]).data)):
         # If it isn't there, ignore the change
@@ -226,22 +239,20 @@ def update():
     for elem in visual_vitals:
         if elem not in list(vs_sum.data): 
             vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
-            vitals_present[elem] = False
-        else: vitals_present[elem] = True 
-
+    # Update plot data
     vs_source.data = ColumnDataSource(data=vs_sum.data).data
-     
     date_range_slider.start = pd.to_datetime(min(vs_sum.data.index)).timestamp()*1000
     date_range_slider.end = pd.to_datetime(max(vs_sum.data.index)).timestamp()*1000
     date_range_slider.value = (date_range_slider.start, date_range_slider.end)
     p_main.title.text = 'Vitals Summary for file: {}'.format(cur_file_name )
     p_main.x_range.start = date_range_slider.start
     p_main.x_range.end = date_range_slider.end
+    
     print('New file selected: {}'.format(cur_file_name))
     
 ## File management widgets ##
 sel_file_txt = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
-warn_txt = Paragraph(text='No ' + wf_selected + ' found in selection')
+warn_txt = Paragraph(text='No ' + vs_types[wf_radio_button.active] + ' found in selection')
 sel_file_button = Button(label='Change File',button_type='success')
 
 files['start_time'] = pd.to_datetime(files['start_time'])
@@ -268,36 +279,32 @@ file_tab = Panel(child=file_layout, title='File Management')
 
 ## Vitals Functions ##
 
+# Fill the vitals with NaN values if not present so that the plots can update with other files that
+#   do contain these columns
 for elem in vs_types:
     if elem not in list(vs_sum.data): 
         vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
         wf_present[elem] = False
     else: wf_present[elem] = True       
 
-vs_source = ColumnDataSource (data=vs_sum.data)
-
-vs_hover = HoverTool(
-    tooltips=[
-        ('Time','@DateTime{%Y-%m-%d-%H:%M}'),
-        ('index','$index')
-    ],
-    mode='vline'
-    )
-vs_hover.formatters = {'DateTime':'datetime'}
-
 vs_width = 1200
 vs_height = 250
 
-# Plot ABP (Change this so that it can be changed to CVP etc.) 
+vs_source = ColumnDataSource (data=vs_sum.data)
+
+# Create main figure (for ABP / CVP)
 p_main = figure(y_axis_label='ABP (mmHg)', x_axis_type='datetime', 
            tools=['box_zoom', 'wheel_zoom', 'pan', vs_hover, 'reset','crosshair'], y_range=(0, 200), 
                plot_width=vs_width, plot_height=int(vs_height*1.3), title = 'ABP Summary for file: {}'.format(cur_file_name ))
 p_main.title.align = 'center'
 
 p_main.xaxis.formatter = vs_x_axis
-
+# Plot the vitals on the main plot
 r_main = [p_main.line('DateTime', elem, source=vs_source, line_color = next(colors)) for elem in vs_types]
-for elem in r_main: elem.glyph.line_alpha =0
+
+# Change all lines to be invisible
+for elem in r_main: elem.glyph.line_alpha = 0
+# Change all active lines to be visible
 r_main[wf_radio_button.active].glyph.line_alpha = 1
   
 # Start span represents the beginning of the area of interest
@@ -317,7 +324,10 @@ p_main.extra_y_ranges = {"pressor": Range1d(start=0, end=20)}
 
 # Adding the second axis to the plot.  
 p_main.add_layout(LinearAxis(y_range_name="pressor"), 'right')
+
+# Add pressor data to main figure if the data exists
 if p:
+    # Pressor data has a y value of the 'amount' 
     pressor_glyph = p_main.circle(x = 'DateTime',y='value',source = pressor_source,color = next(colors),y_range_name="pressor")
     PressorHoverTool = HoverTool(
         name= 'Pressor Hover',
@@ -330,50 +340,51 @@ if p:
     p_main.add_tools(PressorHoverTool)
          
 p_dict = {}
-
+# Plot all other existing vitals
 for elem in visual_vitals:
     if elem not in list(vs_sum.data): 
         vs_sum.data[elem] = [np.nan] * len(vs_sum.data.index)
-        vitals_present[elem] = False
-    else: vitals_present[elem] = True
-    p_temp = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=int(vs_height*1.3),tools=['box_zoom', 'xwheel_zoom', 'pan'])
-    p_temp.xaxis.formatter = vs_x_axis
-    p_temp.x_range = p_main.x_range
-    p_temp.line('DateTime', elem, source=vs_source, line_color=next(colors))
-    p_dict[elem] = p_temp
+    p_dict[elem] = figure(y_axis_label=elem, x_axis_type='datetime', plot_width=vs_width, plot_height=int(vs_height*1.3),tools=['box_zoom', 'xwheel_zoom', 'pan'])
+    p_dict[elem].xaxis.formatter = vs_x_axis
+    p_dict[elem].x_range = p_main.x_range
+    p_dict[elem].line('DateTime', elem, source=vs_source, line_color=next(colors))
 
-load_button = Button(label="Segment File", button_type="success")
+seg_button = Button(label="Segment File", button_type="success")
 selected_file = Paragraph(text = 'Current File: {0:s}'.format(os.path.split(active_file)[-1]))
 
-hours, minutes, seconds = duration_HMS(min(vs_sum.data.index), max(vs_sum.data.index))
+# Get the start and end datetime values of the data
+vs_start = min(vs_sum.data.index)
+vs_end = max(vs_sum.data.index)
+
+# Print the total time difference between the start and end
+hours, minutes, seconds = duration_HMS(vs_start, vs_end)
 selected_duration = Paragraph(text = 'Selected Duration: {0:0.0f}:{1:02.0f}:{2:02.0f}'.format(hours, minutes, seconds))
 
-selected_dates = Paragraph(text=str(min(vs_sum.data.index).round('s')) + ' to ' + str(max(vs_sum.data.index).round('s')))
+selected_dates = Paragraph(text=str(vs_start.round('s')) + ' to ' + str(vs_end.round('s')))
 checkbox_group = CheckboxGroup(labels = list(p_dict), active = list(range(0,len(p_dict))), inline = True)
 
-s = min(vs_sum.data.index).timestamp()*1000
-e = max(vs_sum.data.index).timestamp()*1000
-date_range_slider = RangeSlider(title="Date Range", start=s, end=e, value= (s, e), step=1, show_value = False, tooltips = False)
+date_range_slider = RangeSlider(title="Date Range", start=vs_start.timestamp()*1000, end=vs_end.timestamp()*1000, value= (vs_start.timestamp()*1000, vs_end.timestamp()*1000), step=1, show_value = False, tooltips = False)
 
+# Callback for switching the main vital display (using radiobutton group)
 def wf_switch(attr, old, new):
-    if wf_present[vs_types[wf_radio_button.active]]:
-        p_main.yaxis.axis_label = vs_types[wf_radio_button.active]
-        p_main.title.text = vs_types[wf_radio_button.active] + ' Summary for file: {}'.format(cur_file_name )
+    if wf_present[vs_types[new]]:
+        p_main.yaxis.axis_label = vs_types[new]
+        p_main.title.text = vs_types[new] + ' Summary for file: {}'.format(cur_file_name )
         for r in r_main:
             r.glyph.line_alpha = 0
-        r_main[wf_radio_button.active].glyph.line_alpha =1
+        r_main[new].glyph.line_alpha =1
     else:
-        print(vs_types[wf_radio_button.active] + ' not in selected file')
+        print(vs_types[new] + ' not in selected file')
         wf_radio_button.active = old 
 
-
 def load_cb ():
-    global wf
-    global wvt
-    load_button.disabled = True
-    load_button.label = 'Segmenting File'
-    load_button.button_type = 'warning'
+    global wf, wvt
+    # Disable buttons while segmenting
+    seg_button.disabled = True
+    seg_button.label = 'Segmenting File'
+    seg_button.button_type = 'warning'
     disable_wf_panel()
+    # Get the dates selected on the slider and convert them to timestamps
     dates = date_range_slider.value
     vs_start = pd.Timestamp(dates[0]/1000,unit='s')
     vs_end = pd.Timestamp(dates[1]/1000,unit='s')
@@ -383,21 +394,28 @@ def load_cb ():
     start_str = vs_start.strftime('%Y%m%d-%H%M%S')
     end_str = vs_end.strftime('%Y%m%d-%H%M%S')
     
+    # Perform the segmentation and wavelet operations on the selected data
     if 'AR' in vs_types[wf_radio_button.active]:
         wf = waveform.Waveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
         wvt = waveform.ABPWavelet(wf, process=True)
     elif 'CVP' in vs_types[wf_radio_button.active]:
         wf = waveform.CVPWaveform(active_file, start=start_str, end=end_str, process=True ,seg_channel = vs_types[wf_radio_button.active])
         wvt = waveform.CVPWavelet(wf, process=True)
-    
+        
+    # Update the segment slider
     seg_slider.value = 1
     seg_slider.end=len(wf.segments)
+    
+    # Update the waveform panel plots
     wf_source.data = ColumnDataSource(wf.segments[1]).data
+    wf_start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    wf_end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    
     p_seg.yaxis.axis_label = wf_types[wf_radio_button.active]
-
-    p_seg.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-    p_seg.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
-
+    p_seg.x_range.start = wf_start
+    p_seg.x_range.end = wf_end
+    
+    # Update pressor information if it exists
     if p:
         p_subset = p.DFpressors.loc[(p.DFpressors.index >= vs_start) & (p.DFpressors.index <= vs_end)]
         for elem in p_subset.index:
@@ -405,8 +423,10 @@ def load_cb ():
         pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
     
     wf_line.glyph.y = wf_types[wf_radio_button.active]
-    p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-    p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    p_wf_II.x_range.start = wf_start
+    p_wf_II.x_range.end = wf_end
+    
+    # Show R peaks if selected
     if show_peaks.active:
         df = pd.DataFrame(wf_source.data)
         df['DateTime'] = wf_source.data['index']
@@ -418,13 +438,15 @@ def load_cb ():
         ann, anntype = eng.wrapper(ind,ecg,'wf_files/'+active_file.split('\\')[-1].split('.')[0],240,nargout=2)
         R_peaks = [int(ann[i][0]) for i, e in enumerate(anntype) if e == 'N']
         ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data
-    load_button.disabled = False
+        
+    # Enable elements on vitals panel
+    seg_button.disabled = False
     disable_wf_panel(False)
-    load_button.label = 'Segment File'
-    load_button.button_type = 'success'
+    seg_button.label = 'Segment File'
+    seg_button.button_type = 'success'
     print ('Read complete')
     
-    
+# Handler for removing / adding vital plots using checkbox_group    
 def checkbox_click_handler(selected_checkboxes):
     visible_glyphs = vs_plots.children
     for index, glyph in enumerate(p_dict):
@@ -447,14 +469,14 @@ def date_time_slider(attr, old, new):
     start_span.location = dates[0]
     end_span.location = dates[1]
 
-load_button.on_click(load_cb)
+seg_button.on_click(load_cb)
 checkbox_group.on_click(checkbox_click_handler)
 date_range_slider.on_change('value',date_time_slider)
 wf_radio_button.on_change('active',wf_switch)
 
 vs_layout = column()
-vs_layout.children.append(widgetbox(wf_radio_button, selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
-#vs_layout.children.append(widgetbox(selected_file, selected_duration, load_button, checkbox_group, date_range_slider, selected_dates))
+vs_layout.children.append(widgetbox(wf_radio_button, selected_file, selected_duration, seg_button, checkbox_group, date_range_slider, selected_dates))
+
 vs_layout.children.append(p_main)
 vs_plots = column()
 
@@ -503,18 +525,17 @@ def disable_wf_panel(disable = True):
     plus.disabled = disable
     minus.disabled = disable
     
-def callback (attr, old, new):
+def seg_callback (attr, old, new):
     # segment selection callback
     # add functionality to update the segment classification selector based on previously assigned classification (eg rbg.active)
     
     N = seg_slider.value
-
     wf_source.data = ColumnDataSource(wf.segments[N]).data
-    pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
+    if p:
+        pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
     if show_peaks.active:
         df = pd.DataFrame(wf_source.data)
         df['DateTime'] = wf_source.data['index']
-
         try: ind = [x.item() for x in pd.to_numeric(df['index'])]
         except AttributeError: ind = list(pd.to_numeric(df['index']))
         try: ecg = [x.item()*1000 for x in df['II']]
@@ -522,18 +543,18 @@ def callback (attr, old, new):
         ann, anntype = eng.wrapper(ind,ecg,'wf_files/'+active_file.split('\\')[-1].split('.')[0],240,nargout=2)
         R_peaks = [int(ann[i][0]) for i, e in enumerate(anntype) if e == 'N']
         ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data
-
-    p_seg.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-    p_seg.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
-    p_wf_II.x_range.start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
-    p_wf_II.x_range.end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+        
+    wf_start = pd.to_datetime(min(wf_source.data['index'])).timestamp()*1000
+    wf_end = pd.to_datetime(max(wf_source.data['index'])).timestamp()*1000
+    p_seg.x_range.start = wf_start
+    p_seg.x_range.end = wf_end
+    p_wf_II.x_range.start = wf_start
+    p_wf_II.x_range.end = wf_end
     
 
 cur_file_box = Paragraph(text='Current File: '+ str(active_file.split('\\')[-1]))
 
-# initially fill source with a blank dataframe and update it when then region of interest is selected in the vitals tab
-
-wf_source=ColumnDataSource(pd.read_hdf(active_file,key='Waveforms',stop=1))
+wf_source = ColumnDataSource(pd.read_hdf(active_file,key='Waveforms',stop=1))
 df = pd.DataFrame(wf_source.data)
 df['DateTime'] = wf_source.data['index']
 ann_source = ColumnDataSource(df)
@@ -569,7 +590,7 @@ p_wf_II.add_tools(point_draw)
 seg_slider = Slider(start=1, end=2, value=1, step=1, title="Segment", disabled = True)
 save_seg_button = Button(label='Save Segment', button_type='success', disabled = True)
     
-seg_slider.on_change('value', callback)    
+seg_slider.on_change('value', seg_callback)    
 save_seg_button.on_click(save_button_cb)
 show_peaks = CheckboxGroup(labels = ['R Peaks'], active = [0])
 rbg = RadioButtonGroup ( labels = wf_classes, active = 0)
