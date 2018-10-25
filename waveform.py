@@ -372,10 +372,10 @@ class Summary:
     def read (self, filename):
         if os.path.isfile(filename.split('.')[0] + '.sum'):
             print('Reading .sum summary file')
-            df = pd.read_hdf(filename.split('.')[0] + '.sum')
+            df = pd.read_hdf(filename.split('.')[0] + '.sum', key = '/Vitals_summary')
         else:
             print('No .sum summary file. Sampling vitals.')
-            df = pd.read_hdf(filename, 'Vitals')
+            df = pd.read_hdf(filename, '/Vitals')
             df = df.resample('1T').mean()
         self.data = df.dropna(axis='columns',how='all').drop(['NBP-S', 'NBP-D'],axis = 'columns',errors='ignore')
         #self.rename_wfs()
