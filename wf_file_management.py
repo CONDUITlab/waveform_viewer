@@ -76,18 +76,28 @@ def build_db (db_file, source):
         end_times = []
         
         for file in files:
+        
             names.append(os.path.split(file)[1].split('.')[0])
             # get start and stop times
-            store = pd.HDFStore(file)
+            store = pd.HDFStore(file, 'r')
             
-            start_times.append(store.select('Waveforms', start=1, stop=2).index[0].strftime('%Y%m%d %H:%M:%S'))
-            end_times.append(store.select('Waveforms', start=-2, stop=-1).index[0].strftime('%Y%m%d %H:%M:%S'))
+            print('Opening file {}'.format(file))
             
+            if '/Waveforms' in list(store.keys()):
+                start_times.append(store.select('/Waveforms', start=1, stop=2).index[0].strftime('%Y%m%d %H:%M:%S'))
+                end_times.append(store.select('/Waveforms', start=-2, stop=-1).index[0].strftime('%Y%m%d %H:%M:%S'))
+            else:
+                print ('Error with file {}'.format(file))
+                start_times.append('BAD')
+                end_times.append('BAD')
+                
             store.close()
-            
+#            except:
+#                print ('Error with file {}'.format(file))
         data = {'filename':names, 'path':files, 'start_time':start_times, 'end_time':end_times}
         df = pd.DataFrame(data, columns=['filename','path','start_time','end_time'])
         df['status']=0
+        df = df[df.start_time != 'BAD']
         print(df)
         
         df.to_sql('files', db, if_exists='replace', index=False)
