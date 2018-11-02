@@ -427,7 +427,8 @@ def load_cb ():
     p_wf_II.x_range.end = wf_end
     
     # Show R peaks if selected
-    if show_peaks.active:
+    
+    if show_peaks.active == 'no': #deactivated
         df = pd.DataFrame(wf_source.data)
         df['DateTime'] = wf_source.data['index']
         try: ind = [x.item() for x in pd.to_numeric(df['index'])]
@@ -437,7 +438,7 @@ def load_cb ():
         except AttributeError: ecg = list(df['II']*1000)
         ann, anntype = eng.wrapper(ind,ecg,'wf_files/'+active_file.split('\\')[-1].split('.')[0],240,nargout=2)
         R_peaks = [int(ann[i][0]) for i, e in enumerate(anntype) if e == 'N']
-        ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data
+        ann_source.data = ColumnDataSource(df.iloc[R_peaks,:]).data 
         
     # Enable elements on vitals panel
     seg_button.disabled = False
@@ -495,10 +496,12 @@ def save_button_cb ():
     choice = wf_classes[rbg.active]
     N = seg_slider.value
     print ('Segment {} annotated as {}'.format(N,choice))
-    entry = cur_file_name + '_{0:03d}'.format(N)
+#    entry = cur_file_name + '_{0:03d}'.format(N)
+    entry = os.path.basename(active_file).split('.')[0].split('_case_')[1] + '_{0:03d}'.format(N)
+    
     db_row = wvt.wltFeatures.loc[N:N].copy()
     db_row['seg'] = N
-    db_row['file'] = cur_file_name
+    db_row['file'] = active_file
     db_row['entry'] = entry
     db_row['seg_class'] = choice # assign the classification to the entry row
     db_row['seg_start_time'] = wvt.seg_start_time[N]
@@ -533,7 +536,7 @@ def seg_callback (attr, old, new):
     wf_source.data = ColumnDataSource(wf.segments[N]).data
     if p:
         pressor_seg.data = ColumnDataSource(p.DFpressors.loc[(p.DFpressors.index >= pd.to_datetime(p_seg.x_range.start/1000, unit = 's')) & (p.DFpressors.index <= pd.to_datetime(p_seg.x_range.end/1000, unit = 's'))]).data
-    if show_peaks.active:
+    if show_peaks.active == 'no':
         df = pd.DataFrame(wf_source.data)
         df['DateTime'] = wf_source.data['index']
         try: ind = [x.item() for x in pd.to_numeric(df['index'])]
